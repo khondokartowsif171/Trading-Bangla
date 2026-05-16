@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { BarChart3, PieChart, Home, TrendingUp } from 'lucide-react';
+import { BarChart3, Activity, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
-  { to: '/', icon: Home, labelKey: 'home' as const },
-  { to: '/dashboard', icon: BarChart3, labelKey: 'dashboard' as const },
-  { to: '/trade', icon: TrendingUp, labelKey: 'trade' as const },
-  { to: '/portfolio', icon: PieChart, labelKey: 'portfolio' as const },
+  { to: '/forex', icon: BarChart3, labelKey: 'forexMT5' as const },
+  { to: '/ea-analytics', icon: Activity, labelKey: 'eaAnalytics' as const },
+  { to: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard' as const },
 ];
 
 const WHATSAPP_NUMBER = '+8801612628112';
@@ -52,7 +51,7 @@ export default function MobileBottomNav() {
                 onClick={() => setRipple(tab.to)}
                 className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-all duration-150 active:scale-90 ${
                   active
-                    ? darkMode ? 'text-violet-400' : 'text-violet-600'
+                    ? darkMode ? 'text-green-400' : 'text-green-600'
                     : darkMode ? 'text-gray-500' : 'text-gray-400'
                 }`}
               >
@@ -60,13 +59,13 @@ export default function MobileBottomNav() {
                   <motion.div
                     layoutId="mobileTabIndicator"
                     className={`absolute -top-0.5 w-8 h-0.5 rounded-full ${
-                      darkMode ? 'bg-violet-500' : 'bg-violet-600'
+                      darkMode ? 'bg-green-500' : 'bg-green-600'
                     }`}
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
                 )}
                 <div className={`relative p-1 rounded-lg ${
-                  active ? (darkMode ? 'bg-violet-500/10' : 'bg-violet-50') : ''
+                  active ? (darkMode ? 'bg-green-500/10' : 'bg-green-50') : ''
                 }`}>
                   <tab.icon className="w-5 h-5" />
                   <AnimatePresence>
@@ -77,7 +76,7 @@ export default function MobileBottomNav() {
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.35 }}
                         onAnimationComplete={() => setRipple(null)}
-                        className="absolute inset-0 rounded-full bg-violet-400/30"
+                        className="absolute inset-0 rounded-full bg-green-400/30"
                       />
                     )}
                   </AnimatePresence>
@@ -89,7 +88,7 @@ export default function MobileBottomNav() {
         </div>
       </nav>
 
-      {/* === WhatsApp Floating Button (mobile, above bottom nav) === */}
+      {/* === WhatsApp Floating Button === */}
       <motion.a
         href={WHATSAPP_URL}
         target="_blank"
@@ -103,7 +102,7 @@ export default function MobileBottomNav() {
         </svg>
       </motion.a>
 
-      {/* === Aura Agent Floating Button (mobile, above bottom nav) === */}
+      {/* === Aura Agent Floating Button === */}
       <AnimatePresence>
         {!chatOpen && (
           <motion.button
@@ -123,7 +122,6 @@ export default function MobileBottomNav() {
       <AnimatePresence>
         {chatOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -131,7 +129,6 @@ export default function MobileBottomNav() {
               onClick={() => setChatOpen(false)}
               className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
             />
-            {/* Sheet */}
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -142,12 +139,10 @@ export default function MobileBottomNav() {
               }`}
               style={{ height: '85vh', maxHeight: '620px' }}
             >
-              {/* Drag handle */}
               <div className="flex justify-center pt-3 pb-2">
                 <div className={`w-10 h-1 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
               </div>
 
-              {/* Header */}
               <div className={`flex items-center justify-between px-4 py-2.5 border-b ${
                 darkMode ? 'border-gray-800' : 'border-gray-200'
               }`}>
@@ -163,17 +158,14 @@ export default function MobileBottomNav() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setChatOpen(false)}
-                  className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-                >
+                <button onClick={() => setChatOpen(false)}
+                  className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
                 </button>
               </div>
 
-              {/* Messages */}
               <div className={`flex-1 overflow-y-auto px-3 py-3 space-y-2.5 ${darkMode ? 'bg-gray-950' : 'bg-white'}`}>
                 {chatMessages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -185,9 +177,7 @@ export default function MobileBottomNav() {
                     <div className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
                       msg.role === 'user'
                         ? 'bg-gradient-to-br from-violet-600 to-purple-700 text-white rounded-br-sm'
-                        : darkMode
-                          ? 'bg-gray-800 text-gray-200 rounded-bl-sm'
-                          : 'bg-gray-100 text-gray-700 rounded-bl-sm'
+                        : darkMode ? 'bg-gray-800 text-gray-200 rounded-bl-sm' : 'bg-gray-100 text-gray-700 rounded-bl-sm'
                     }`}>
                       {msg.content}
                     </div>
@@ -196,32 +186,19 @@ export default function MobileBottomNav() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               <div className={`p-3 border-t ${darkMode ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
                 <div className="flex gap-2">
-                  <input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
+                  <input value={input} onChange={e => setInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleSend()}
                     placeholder="Ask Aura..."
                     className={`flex-1 px-4 py-2.5 rounded-xl text-sm outline-none border transition-all ${
-                      darkMode
-                        ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-violet-500'
+                      darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-violet-500'
                         : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-violet-400'
-                    }`}
-                  />
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all"
-                  >
+                    }`} />
+                  <button onClick={handleSend} disabled={!input.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all">
                     Send
                   </button>
-                </div>
-                <div className="text-center mt-1.5">
-                  <span className={`text-[9px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                    Aura Agent • AI Trading Intelligence
-                  </span>
                 </div>
               </div>
             </motion.div>

@@ -9,6 +9,7 @@ import Dashboard from '@/pages/Dashboard';
 import Trade from '@/pages/Trade';
 import PortfolioPage from '@/pages/PortfolioPage';
 import EAAnalytics from '@/pages/EAAnalytics';
+import ForexMT5 from '@/pages/ForexMT5';
 
 function AppContent() {
   const { darkMode } = useApp();
@@ -28,6 +29,7 @@ function AppContent() {
           <Route path="/trade" element={<Trade />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/ea-analytics" element={<EAAnalytics />} />
+          <Route path="/forex" element={<ForexMT5 />} />
         </Routes>
       </div>
       {/* Desktop floating widgets */}

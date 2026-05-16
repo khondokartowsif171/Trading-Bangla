@@ -15,6 +15,7 @@ export default function Navbar() {
     { to: '/trade', label: t('trade') },
     { to: '/portfolio', label: t('portfolio') },
     { to: '/ea-analytics', label: t('eaAnalytics') },
+    { to: '/forex', label: t('forexMT5') },
   ];
 
   const isActive = (path: string) => location.pathname === path;

@@ -1,133 +1,102 @@
-import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, HistogramData, Time } from 'lightweight-charts';
+import { useRef, useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { CandleData } from '@/data/marketData';
-import { BarChart3 } from 'lucide-react';
+import { FOREX_PAIRS } from '@/services/forexApi';
+import { Search, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'] as const;
+const TIMEFRAMES = ['1d', '1w', '1m', '3m', '12m', 'all'] as const;
 
-function toCandlestickData(candles: CandleData[]): CandlestickData[] {
-  return candles.map(c => ({
-    time: c.time as Time,
-    open: c.open,
-    high: c.high,
-    low: c.low,
-    close: c.close,
-  }));
-}
+const SYMBOL_MAP: Record<string, string> = {
+  'EUR/USD': 'FX:EURUSD',
+  'GBP/USD': 'FX:GBPUSD',
+  'USD/JPY': 'FX:USDJPY',
+  'USD/CHF': 'FX:USDCHF',
+  'AUD/USD': 'FX:AUDUSD',
+  'USD/CAD': 'FX:USDCAD',
+  'NZD/USD': 'FX:NZDUSD',
+  'EUR/GBP': 'FX:EURGBP',
+  'EUR/JPY': 'FX:EURJPY',
+  'GBP/JPY': 'FX:GBPJPY',
+  'USD/BDT': 'FX:USDBDT',
+  XAU: 'OANDA:XAUUSD',
+  BTC: 'BINANCE:BTCUSDT',
+  ETH: 'BINANCE:ETHUSDT',
+  BNB: 'BINANCE:BNBUSDT',
+  SOL: 'BINANCE:SOLUSDT',
+  XRP: 'BINANCE:XRPUSDT',
+  AAPL: 'NASDAQ:AAPL',
+  MSFT: 'NASDAQ:MSFT',
+  GOOGL: 'NASDAQ:GOOGL',
+  TSLA: 'NASDAQ:TSLA',
+  NVDA: 'NASDAQ:NVDA',
+  AMZN: 'NASDAQ:AMZN',
+  META: 'NASDAQ:META',
+};
 
-function toVolumeData(candles: CandleData[], darkMode: boolean): HistogramData[] {
-  return candles.map(c => ({
-    time: c.time as Time,
-    value: c.volume || 0,
-    color: c.close >= c.open
-      ? darkMode ? 'rgba(34,197,94,0.35)' : 'rgba(34,197,94,0.4)'
-      : darkMode ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.4)',
-  }));
-}
+const DATE_RANGE_MAP: Record<string, string> = {
+  '1d': '1d|1',
+  '1w': '5d|15',
+  '1m': '1m|30',
+  '3m': '3m|60',
+  '12m': '12m|1D',
+  'all': 'all|1M',
+};
 
 export default function TradingChart() {
-  const { darkMode, selectedAsset, candles, t } = useApp();
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const [timeframe, setTimeframe] = useState<string>('5m');
+  const { darkMode, selectedAsset, t } = useApp();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [timeframe, setTimeframe] = useState<string>('1m');
+  const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
-  const bgColor = darkMode ? '#0f172a' : '#ffffff';
-  const textColor = darkMode ? '#94a3b8' : '#64748b';
-  const gridColor = darkMode ? '#1e293b' : '#e2e8f0';
-  const borderColor = darkMode ? '#1e293b' : '#e2e8f0';
+  const tvSymbol = selectedAsset ? (SYMBOL_MAP[selectedAsset.symbol] || `FX:${selectedAsset.symbol.replace('/', '')}`) : 'FX:EURUSD';
+  const tfValue = DATE_RANGE_MAP[timeframe] || '1m|30';
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '';
 
-    // Clean up previous chart
-    if (chartRef.current) {
-      chartRef.current.remove();
-    }
-
-    const isMobile = window.innerWidth < 768;
-    const chartHeight = isMobile ? 380 : 520;
-
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: chartHeight,
-      layout: {
-        background: { type: ColorType.Solid, color: bgColor },
-        textColor,
-      },
-      grid: {
-        vertLines: { color: gridColor },
-        horzLines: { color: gridColor },
-      },
-      crosshair: {
-        mode: 0,
-        vertLine: { color: darkMode ? '#6366f1' : '#4f46e5', width: 1, style: 2 },
-        horzLine: { color: darkMode ? '#6366f1' : '#4f46e5', width: 1, style: 2 },
-      },
-      rightPriceScale: {
-        borderColor,
-        scaleMargins: { top: 0.1, bottom: 0.2 },
-      },
-      timeScale: {
-        borderColor,
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      handleScroll: { vertTouchDrag: false, horzTouchDrag: true },
-    });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js';
+    script.type = 'text/javascript';
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      symbols: [[selectedAsset?.name || selectedAsset?.symbol || 'EUR/USD', `${tvSymbol}|1D`]],
+      lineWidth: 2,
+      lineType: 0,
+      chartType: 'area',
+      colorTheme: 'dark',
+      fontColor: '#6b7280',
+      backgroundColor: '#0f0f0f',
+      widgetFontColor: '#d1d5db',
+      gridLineColor: 'rgba(242,242,242,0.06)',
       upColor: '#22c55e',
       downColor: '#ef4444',
       borderUpColor: '#22c55e',
       borderDownColor: '#ef4444',
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
+      volumeUpColor: 'rgba(34,197,94,0.5)',
+      volumeDownColor: 'rgba(239,68,68,0.5)',
+      isTransparent: false,
+      locale: 'en',
+      chartOnly: false,
+      scalePosition: 'right',
+      scaleMode: 'Normal',
+      valuesTracking: '1',
+      changeMode: 'price-and-percent',
+      dateRanges: ['1d|1', '1w|15', '1m|30', '3m|60', '12m|1D', 'all|1M'],
+      fontSize: '10',
+      headerFontSize: 'medium',
+      autosize: true,
+      width: '100%',
+      height: '100%',
+      noTimeScale: false,
+      hideDateRanges: false,
+      hideMarketStatus: false,
+      hideSymbolLogo: false,
     });
-
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: darkMode ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.25)',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-    });
-
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.85, bottom: 0 },
-    });
-
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-    volumeSeriesRef.current = volumeSeries;
-
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
-    };
-  }, [darkMode]);
-
-  // Update data when candles change
-  useEffect(() => {
-    if (candleSeriesRef.current && volumeSeriesRef.current) {
-      candleSeriesRef.current.setData(toCandlestickData(candles));
-      volumeSeriesRef.current.setData(toVolumeData(candles, darkMode));
-      if (chartRef.current) {
-        chartRef.current.timeScale().fitContent();
-      }
-    }
-  }, [candles, darkMode]);
+    containerRef.current.appendChild(script);
+  }, [selectedAsset?.symbol, tvSymbol]);
 
   if (!selectedAsset) return null;
 
@@ -135,12 +104,12 @@ export default function TradingChart() {
     <div className={`rounded-2xl border overflow-hidden ${
       darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'
     }`}>
-      {/* Chart Header */}
+      {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 border-b ${
         darkMode ? 'border-gray-800' : 'border-gray-200'
       }`}>
         <div className="flex items-center gap-3">
-          <BarChart3 className={`w-4 h-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+          <BarChart3 className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
           <div>
             <span className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
               {selectedAsset.symbol}
@@ -154,35 +123,26 @@ export default function TradingChart() {
         {/* Timeframes */}
         <div className="flex items-center gap-1">
           {TIMEFRAMES.map(tf => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
+            <button key={tf} onClick={() => setTimeframe(tf)}
               className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
                 timeframe === tf
-                  ? darkMode
-                    ? 'bg-indigo-500/30 text-indigo-400'
-                    : 'bg-indigo-100 text-indigo-700'
-                  : darkMode
-                    ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              }`}
-            >
+                  ? darkMode ? 'bg-green-500/30 text-green-400' : 'bg-green-100 text-green-700'
+                  : darkMode ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}>
               {t(tf as any)}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Current Price Info */}
-      <div className={`flex flex-wrap items-center gap-4 px-4 py-2 border-b ${
+      {/* Price bar */}
+      <div className={`flex items-center gap-4 px-4 py-2 border-b ${
         darkMode ? 'border-gray-800' : 'border-gray-200'
       }`}>
-        <span className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+        <span className={`text-xl font-bold font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           ${selectedAsset.price.toLocaleString()}
         </span>
-        <span className={`text-sm font-semibold ${
-          selectedAsset.changePercent >= 0 ? 'text-green-500' : 'text-red-500'
-        }`}>
+        <span className={`text-sm font-semibold ${selectedAsset.changePercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
           {selectedAsset.changePercent >= 0 ? '+' : ''}{selectedAsset.changePercent}%
         </span>
         <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -193,8 +153,10 @@ export default function TradingChart() {
         </span>
       </div>
 
-      {/* Chart */}
-      <div ref={chartContainerRef} className="w-full" />
+      {/* TradingView Chart */}
+      <div className="w-full" style={{ height: 460 }}>
+        <div ref={containerRef} className="w-full h-full" />
+      </div>
     </div>
   );
 }
