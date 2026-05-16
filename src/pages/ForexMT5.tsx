@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useForexRates, useForexHistorical } from '@/hooks/useForexData';
 import { FOREX_PAIRS } from '@/services/forexApi';
+import { getRealSignals, SignalResult } from '@/services/realSignalEngine';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
-import { Search, TrendingUp, TrendingDown, RefreshCw, Activity } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, RefreshCw, Activity, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 function MarketWatch({ rates, loading, onSelect, selected }: {
@@ -175,6 +176,16 @@ export default function ForexMT5() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD');
   const selectedRate = rates[selectedSymbol];
 
+  const [signals, setSignals] = useState<SignalResult[]>([]);
+  const [sigLoading, setSigLoading] = useState(false);
+  const fetchSignals = useCallback(async () => {
+    setSigLoading(true);
+    try { setSignals(await getRealSignals(selectedSymbol)); }
+    catch {}
+    setSigLoading(false);
+  }, [selectedSymbol]);
+  useEffect(() => { fetchSignals(); const interval = setInterval(fetchSignals, 10000); return () => clearInterval(interval); }, [fetchSignals]);
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* MT5-style toolbar */}
@@ -285,6 +296,48 @@ export default function ForexMT5() {
             </div>
           </motion.div>
         </div>
+
+        {/* EA Bot Signals */}
+        {signals.length > 0 && (
+          <div className={`mt-4 rounded-xl border p-4 ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={`text-sm font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <Zap className="w-4 h-4 text-green-400" />
+                {isBn ? `EA বট সিগন্যাল — ${selectedSymbol}` : `EA Bot Signals — ${selectedSymbol}`}
+              </h3>
+              <span className="flex items-center gap-1 text-[10px] text-green-400">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                {sigLoading ? '...' : (isBn ? '১০সে' : '10s')}
+              </span>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3">
+              {signals.slice(0, 3).map((s, i) => {
+                const bought = s.signal === 'BUY';
+                return (
+                  <motion.div key={`${s.symbol}-${i}`} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    className={`rounded-xl p-3 border ${bought ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs">{s.symbol}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${bought ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.signal}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 mb-1.5 text-[10px]">
+                      <div><p className="text-gray-500">Entry</p><p className="font-mono font-bold">${s.entry.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
+                      <div><p className="text-gray-500">SL</p><p className="font-mono font-bold text-red-400">{s.stopLoss.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
+                      <div><p className="text-gray-500">TP</p><p className="font-mono font-bold text-green-400">{s.takeProfit.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-gray-700 overflow-hidden">
+                        <div className={`h-full rounded-full ${s.confidence >= 70 ? 'bg-green-500' : 'bg-yellow-500'}`} style={{ width: `${s.confidence}%` }} />
+                      </div>
+                      <span className="text-[9px] text-gray-500">{s.confidence}%</span>
+                    </div>
+                    <p className="text-[8px] text-gray-500 mt-1 leading-tight">{s.reason}</p>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Info bar */}
         <div className={`mt-4 rounded-xl border p-3 text-center ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
