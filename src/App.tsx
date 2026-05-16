@@ -10,6 +10,7 @@ import Trade from '@/pages/Trade';
 import PortfolioPage from '@/pages/PortfolioPage';
 import EAAnalytics from '@/pages/EAAnalytics';
 import ForexMT5 from '@/pages/ForexMT5';
+import AuraCrytox from '@/pages/AuraCrytox';
 
 function AppContent() {
   const { darkMode } = useApp();
@@ -30,6 +31,7 @@ function AppContent() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/ea-analytics" element={<EAAnalytics />} />
           <Route path="/forex" element={<ForexMT5 />} />
+          <Route path="/crytox" element={<AuraCrytox />} />
         </Routes>
       </div>
       {/* Desktop floating widgets */}

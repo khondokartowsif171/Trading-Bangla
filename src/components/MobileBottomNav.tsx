@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { BarChart3, Activity, LayoutDashboard } from 'lucide-react';
+import { BarChart3, Activity, LayoutDashboard, Coins } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
   { to: '/forex', icon: BarChart3, labelKey: 'forexMT5' as const },
   { to: '/ea-analytics', icon: Activity, labelKey: 'eaAnalytics' as const },
+  { to: '/crytox', icon: Coins, labelKey: 'crypto' as const },
   { to: '/dashboard', icon: LayoutDashboard, labelKey: 'dashboard' as const },
 ];
 
