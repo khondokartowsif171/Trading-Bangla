@@ -28,7 +28,7 @@ export default function Trade() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className={`text-lg md:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {mode === 'classic' ? t('trade') : (isBn ? 'ফরেক্স টার্মিনাল' : 'Forex Terminal')}
+              {t('forexMT5')}
             </h1>
             <p className={`text-xs md:text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {mode === 'classic'
