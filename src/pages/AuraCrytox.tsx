@@ -173,6 +173,29 @@ export default function AuraCrytox() {
           </motion.div>
         )}
 
+        {/* Cryptox External Link */}
+        <a href="https://cryptox.auraajenticai.cloud" target="_blank" rel="noopener noreferrer"
+          className={`block rounded-xl border p-4 bg-gradient-to-r from-orange-500/10 to-amber-500/10 hover:from-orange-500/20 hover:to-amber-500/20 transition-all ${darkMode ? 'border-orange-500/30' : 'border-orange-500/20'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <span className="text-sm font-bold bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">AURACRYTOX</span>
+                <p className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {isBn ? 'সম্পূর্ণ ক্রিপ্টো ট্রেডিং প্ল্যাটফর্ম' : 'Full Crypto Trading Platform'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-400 text-xs font-bold">
+              <Globe className="w-3.5 h-3.5" />
+              {isBn ? 'ওপেন' : 'OPEN'}
+              <span className="text-[8px] opacity-60">↗</span>
+            </div>
+          </div>
+        </a>
+
         {/* Crypto Table */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`rounded-xl border overflow-hidden ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
           <div className={`px-3 py-2.5 border-b flex items-center gap-2 ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
