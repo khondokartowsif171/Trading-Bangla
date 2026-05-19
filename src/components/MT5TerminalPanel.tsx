@@ -3,8 +3,11 @@ import { useApp } from '@/context/AppContext';
 import { useForexRates, useForexHistorical } from '@/hooks/useForexData';
 import { FOREX_PAIRS } from '@/services/forexApi';
 import { getRealSignals, SignalResult } from '@/services/realSignalEngine';
+import { analyzeSignal, AgenticSignal } from '@/services/agenticSignalEngine';
+import { startMarketData, stopMarketData, onPriceUpdate, onCandleUpdate, seedHistoricalData, getPrice, getCandles, RealTimeQuote, OHLC } from '@/services/marketDataService';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
-import { Search, TrendingUp, TrendingDown, RefreshCw, Activity, Zap } from 'lucide-react';
+import AgenticSignalPanel from './AgenticSignalPanel';
+import { Search, TrendingUp, TrendingDown, RefreshCw, Activity, Zap, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 function MarketWatch({ rates, loading, onSelect, selected }: {
@@ -75,101 +78,52 @@ function MarketWatch({ rates, loading, onSelect, selected }: {
   );
 }
 
-function MT5Chart({ symbol }: { symbol: string }) {
+function MT5Chart({ symbol, realtimeCandles }: { symbol: string; realtimeCandles: OHLC[] }) {
   const { darkMode } = useApp();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const { candles, loading } = useForexHistorical(symbol, 60);
+  const { candles: histCandles, loading } = useForexHistorical(symbol, 60);
+  const candles = realtimeCandles.length > 0 ? realtimeCandles : histCandles;
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
     try {
       const chart = createChart(chartContainerRef.current, {
-        layout: {
-          background: { color: 'transparent' },
-          textColor: darkMode ? '#9ca3af' : '#6b7280',
-        },
-        grid: {
-          vertLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' },
-          horzLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' },
-        },
-        width: chartContainerRef.current.clientWidth,
-        height: 460,
-        crosshair: {
-          mode: 0,
-          vertLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' },
-          horzLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' },
-        },
-        timeScale: {
-          borderColor: darkMode ? '#374151' : '#e5e7eb',
-          timeVisible: false,
-          tickMarkFormatter: (time: any) => {
-            const d = new Date(time * 1000);
-            return `${d.getDate()}/${d.getMonth() + 1}`;
-          },
-        },
+        layout: { background: { color: 'transparent' }, textColor: darkMode ? '#9ca3af' : '#6b7280' },
+        grid: { vertLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }, horzLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } },
+        width: chartContainerRef.current.clientWidth, height: 420,
+        crosshair: { mode: 0, vertLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' }, horzLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' } },
+        timeScale: { borderColor: darkMode ? '#374151' : '#e5e7eb', timeVisible: false, tickMarkFormatter: (time: any) => { const d = new Date(time * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
         rightPriceScale: { borderColor: darkMode ? '#374151' : '#e5e7eb' },
       });
-
-      const series = chart.addCandlestickSeries({
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-      } as any);
-
-      chartRef.current = chart;
-      candleSeriesRef.current = series;
-
-      const handleResize = () => {
-        if (chartContainerRef.current) {
-          chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-        }
-      };
+      const series = chart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', borderUpColor: '#22c55e', borderDownColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444' } as any);
+      chartRef.current = chart; candleSeriesRef.current = series;
+      const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
       window.addEventListener('resize', handleResize);
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        chart.remove();
-      };
-    } catch (err) {
-      console.error('MT5Chart mount error:', err);
-    }
+      return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
+    } catch {}
   }, [darkMode]);
 
   useEffect(() => {
     if (!candleSeriesRef.current || !candles.length) return;
     try {
-      const data = candles.map(c => ({
-        time: new Date(c.time).getTime() / 1000,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
+      const data = candles.map(c => ({ time: Math.floor(c.time), open: c.open, high: c.high, low: c.low, close: c.close }));
       candleSeriesRef.current.setData(data);
       chartRef.current?.timeScale().fitContent();
-    } catch (err) {
-      console.error('MT5Chart data error:', err);
-    }
+    } catch {}
   }, [candles]);
 
   return (
     <div className={`relative rounded-xl border overflow-hidden ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
       <div className={`px-4 py-2 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-        <div>
+        <div className="flex items-center gap-2">
           <span className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{symbol}</span>
-          <span className={`ml-2 text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-            {loading ? 'Loading...' : `${candles.length} candles`}
-          </span>
+          <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{candles.length}C</span>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-gray-500">
-          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          <span>60D</span>
-        </div>
+        {symbol === 'XAU/USD' && (
+          <span className="flex items-center gap-1 text-[10px] text-green-400"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />WebSocket</span>
+        )}
       </div>
       <div ref={chartContainerRef} className="w-full" />
     </div>
@@ -183,140 +137,145 @@ export default function MT5TerminalPanel() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD');
   const selectedRate = rates[selectedSymbol];
 
-  const [signals, setSignals] = useState<SignalResult[]>([]);
+  const [realtimeCandles, setRealtimeCandles] = useState<Record<string, OHLC[]>>({});
+  const [livePrice, setLivePrice] = useState<RealTimeQuote | null>(null);
+  const [agenticSignal, setAgenticSignal] = useState<AgenticSignal | null>(null);
   const [sigLoading, setSigLoading] = useState(false);
-  const fetchSignals = useCallback(async () => {
-    setSigLoading(true);
-    try { setSignals(await getRealSignals(selectedSymbol)); }
-    catch {}
-    setSigLoading(false);
+
+  useEffect(() => {
+    startMarketData();
+    FOREX_PAIRS.forEach(p => { seedHistoricalData(p.symbol); });
+
+    const unsubPrice = onPriceUpdate((q) => {
+      if (q.symbol === selectedSymbol) setLivePrice(q);
+    });
+
+    const unsubCandle = onCandleUpdate((sym, c) => {
+      setRealtimeCandles(prev => ({ ...prev, [sym]: c }));
+      if (c.length >= 30) {
+        const sig = analyzeSignal(sym, c);
+        setAgenticSignal(sig);
+      }
+    });
+
+    return () => { unsubPrice(); unsubCandle(); stopMarketData(); };
+  }, []);
+
+  useEffect(() => {
+    const q = getPrice(selectedSymbol);
+    if (q) setLivePrice(q);
+    const c = getCandles(selectedSymbol);
+    if (c.length > 0) setRealtimeCandles(prev => ({ ...prev, [selectedSymbol]: c }));
+    else seedHistoricalData(selectedSymbol).then(c2 => {
+      if (c2.length > 0) setRealtimeCandles(prev => ({ ...prev, [selectedSymbol]: c2 }));
+    });
   }, [selectedSymbol]);
-  useEffect(() => { fetchSignals(); const interval = setInterval(fetchSignals, 10000); return () => clearInterval(interval); }, [fetchSignals]);
+
+  const ratesWithLive: Record<string, any> = { ...rates };
+  Object.entries(getCandles(selectedSymbol)).forEach(([sym]) => {
+    const lq = getPrice(sym);
+    if (lq && !ratesWithLive[sym]) {
+      ratesWithLive[sym] = { bid: lq.bid, ask: lq.ask, spread: lq.spread, change: lq.change, changePercent: lq.changePercent, high: lq.high, low: lq.low, volume: 'RT' };
+    }
+  });
+  const displayRate = livePrice || (selectedRate && {
+    bid: selectedRate.bid, ask: selectedRate.ask, spread: selectedRate.spread,
+    change: selectedRate.change || 0, changePercent: selectedRate.changePercent || 0,
+    high: selectedRate.high || 0, low: selectedRate.low || 0, volume: selectedRate.volume || '0',
+  }) || null;
 
   return (
     <div className="space-y-4">
-      {/* Rate ticker */}
-      <div className={`overflow-hidden rounded-lg border ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
-        <div className="flex gap-6 animate-marquee py-2 px-3">
-          {['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP', 'GBP/JPY'].map(s => {
-            const r = rates[s];
-            return (
-              <div key={s} className="flex items-center gap-1.5 shrink-0 text-xs">
-                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s}</span>
-                <span className={`font-mono ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {r ? r.bid.toFixed(s.includes('JPY') ? 3 : 5) : '—'}
-                </span>
-                <span className={`font-medium ${r ? (r.change >= 0 ? 'text-green-500' : 'text-red-500') : ''}`}>
-                  {r ? `${r.changePercent >= 0 ? '+' : ''}${r.changePercent}%` : ''}
-                </span>
+      {/* Agentic Signal Header */}
+      <div className="grid lg:grid-cols-[1fr_380px] gap-4">
+        {/* Price + Chart Side */}
+        <div className="space-y-3">
+          {/* Live Price Bar */}
+          {displayRate && (
+            <div className={`rounded-xl border p-3 ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
+              <div className={`grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs`}>
+                {[
+                  { label: isBn ? 'বিড' : 'Bid', value: displayRate.bid.toFixed(selectedSymbol.includes('JPY') ? 3 : displayRate.bid > 100 ? 2 : 5), cls: '' },
+                  { label: isBn ? 'আস্ক' : 'Ask', value: displayRate.ask.toFixed(selectedSymbol.includes('JPY') ? 3 : displayRate.ask > 100 ? 2 : 5), cls: 'text-blue-400' },
+                  { label: isBn ? 'স্প্রেড' : 'Spread', value: displayRate.spread.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: 'text-yellow-400' },
+                  { label: isBn ? 'উচ্চ' : 'High', value: displayRate.high.toFixed(displayRate.high > 100 ? 2 : 5), cls: 'text-green-400' },
+                  { label: isBn ? 'নিচু' : 'Low', value: displayRate.low.toFixed(displayRate.low > 100 ? 2 : 5), cls: 'text-red-400' },
+                  { label: isBn ? 'পরিবর্তন' : 'Change', value: `${displayRate.changePercent >= 0 ? '+' : ''}${displayRate.changePercent}%`, cls: displayRate.change >= 0 ? 'text-green-400' : 'text-red-400' },
+                  { label: 'Source', value: selectedSymbol === 'XAU/USD' ? 'Binance WS' : 'Frankfurter', cls: 'text-cyan-400' },
+                ].map(s => (
+                  <div key={s.label}>
+                    <div className={`text-[9px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{s.label}</div>
+                    <div className={`text-xs font-bold font-mono ${s.cls} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s.value}</div>
+                  </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-[320px_1fr] gap-4">
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-          <MarketWatch rates={rates} loading={loading} onSelect={setSelectedSymbol} selected={selectedSymbol} />
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-3">
-          {selectedRate && (
-            <div className={`rounded-xl border p-3 grid grid-cols-4 md:grid-cols-7 gap-3 ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
-              {[
-                { label: isBn ? 'বিড' : 'Bid', value: selectedRate.bid.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: '' },
-                { label: isBn ? 'আস্ক' : 'Ask', value: selectedRate.ask.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: '' },
-                { label: isBn ? 'স্প্রেড' : 'Spread', value: selectedRate.spread.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: 'text-yellow-400' },
-                { label: isBn ? 'উচ্চ' : 'High', value: selectedRate.high.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: 'text-green-400' },
-                { label: isBn ? 'নিচু' : 'Low', value: selectedRate.low.toFixed(selectedSymbol.includes('JPY') ? 3 : 5), cls: 'text-red-400' },
-                { label: isBn ? 'পরিবর্তন' : 'Change', value: `${selectedRate.changePercent >= 0 ? '+' : ''}${selectedRate.changePercent}%`, cls: selectedRate.change >= 0 ? 'text-green-400' : 'text-red-400' },
-                { label: isBn ? 'ভলিউম' : 'Volume', value: selectedRate.volume, cls: '' },
-              ].map(s => (
-                <div key={s.label} className="text-center">
-                  <div className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{s.label}</div>
-                  <div className={`text-xs font-bold font-mono ${s.cls} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s.value}</div>
-                </div>
-              ))}
             </div>
           )}
 
-          <MT5Chart symbol={selectedSymbol} />
+          {/* Chart */}
+          <MT5Chart symbol={selectedSymbol} realtimeCandles={realtimeCandles[selectedSymbol] || []} />
 
+          {/* All Pairs Table */}
           <div className={`rounded-xl border overflow-hidden ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
             <div className={`px-3 py-2 border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <span className={`text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {isBn ? `সব ফরেক্স পেয়ার (${FOREX_PAIRS.length})` : `All Forex Pairs (${FOREX_PAIRS.length})`}
               </span>
             </div>
-            <div className="max-h-[300px] overflow-y-auto">
+            <div className="max-h-[250px] overflow-y-auto">
               {FOREX_PAIRS.map(pair => {
                 const r = rates[pair.symbol];
                 return (
                   <div key={pair.symbol} onClick={() => setSelectedSymbol(pair.symbol)}
-                    className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer border-b last:border-b-0 transition-all ${
+                    className={`flex items-center justify-between px-3 py-1.5 text-xs cursor-pointer border-b last:border-b-0 transition-all ${
                       darkMode ? 'border-gray-800/50 hover:bg-gray-800/50' : 'border-gray-100 hover:bg-gray-50'
                     } ${pair.symbol === selectedSymbol ? (darkMode ? 'bg-indigo-500/10' : 'bg-indigo-50') : ''}`}>
-                    <div>
-                      <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{pair.symbol}</span>
-                      <span className={`ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{pair.name}</span>
-                    </div>
+                    <div><span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{pair.symbol}</span></div>
                     <div className="flex items-center gap-4">
-                      <span className={`font-mono ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {r ? r.bid.toFixed(pair.symbol.includes('JPY') ? 3 : 5) : '—'}
-                      </span>
-                      <span className={`w-16 text-right font-medium ${r ? (r.change >= 0 ? 'text-green-500' : 'text-red-500') : ''}`}>
-                        {r ? `${r.changePercent >= 0 ? '+' : ''}${r.changePercent}%` : '—'}
-                      </span>
+                      <span className={`font-mono ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{r ? r.bid.toFixed(pair.symbol.includes('JPY') ? 3 : 5) : '—'}</span>
+                      <span className={`w-16 text-right font-medium ${r ? (r.change >= 0 ? 'text-green-500' : 'text-red-500') : ''}`}>{r ? `${r.changePercent >= 0 ? '+' : ''}${r.changePercent}%` : '—'}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
-        </motion.div>
+        </div>
+
+        {/* Agentic Signal Panel */}
+        <div>
+          <AgenticSignalPanel signal={agenticSignal} />
+        </div>
       </div>
 
-      {/* EA Bot Signals */}
-      {signals.length > 0 && (
+      {/* Bottom: Market Watch + EA Signals */}
+      <div className="grid lg:grid-cols-[300px_1fr] gap-4">
+        <MarketWatch rates={ratesWithLive} loading={loading} onSelect={setSelectedSymbol} selected={selectedSymbol} />
+        
+        {/* EA Bot Signals (fallback) */}
         <div className={`rounded-xl border p-4 ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'}`}>
           <div className="flex items-center justify-between mb-3">
             <h3 className={`text-sm font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
               <Zap className="w-4 h-4 text-green-400" />
-              {isBn ? `EA বট সিগন্যাল — ${selectedSymbol}` : `EA Bot Signals — ${selectedSymbol}`}
+              {isBn ? `EA বট — ${selectedSymbol}` : `EA Bot — ${selectedSymbol}`}
             </h3>
-            <span className="flex items-center gap-1 text-[10px] text-green-400">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              {sigLoading ? '...' : (isBn ? '১০সে' : '10s')}
-            </span>
+            {livePrice && (
+              <span className="flex items-center gap-1 text-[10px] text-green-400">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                {selectedSymbol === 'XAU/USD' ? 'Real-time' : '30s'}
+              </span>
+            )}
           </div>
-          <div className="grid md:grid-cols-3 gap-3">
-            {signals.slice(0, 3).map((s, i) => {
-              const bought = s.signal === 'BUY';
-              return (
-                <motion.div key={`${s.symbol}-${i}`} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                  className={`rounded-xl p-3 border ${bought ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-bold text-xs">{s.symbol}</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${bought ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{s.signal}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1 mb-1.5 text-[10px]">
-                    <div><p className="text-gray-500">Entry</p><p className="font-mono font-bold">${s.entry.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
-                    <div><p className="text-gray-500">SL</p><p className="font-mono font-bold text-red-400">{s.stopLoss.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
-                    <div><p className="text-gray-500">TP</p><p className="font-mono font-bold text-green-400">{s.takeProfit.toFixed(selectedSymbol.includes('JPY') ? 3 : 5)}</p></div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 h-1 rounded-full bg-gray-700 overflow-hidden">
-                      <div className={`h-full rounded-full ${s.confidence >= 70 ? 'bg-green-500' : 'bg-yellow-500'}`} style={{ width: `${s.confidence}%` }} />
-                    </div>
-                    <span className="text-[9px] text-gray-500">{s.confidence}%</span>
-                  </div>
-                  <p className="text-[8px] text-gray-500 mt-1 leading-tight">{s.reason}</p>
-                </motion.div>
-              );
-            })}
+          <div className="text-center py-6">
+            <div className={`text-4xl mb-2 font-mono font-bold ${displayRate ? (displayRate.change >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-600'}`}>
+              {displayRate ? `$${displayRate.bid.toFixed(displayRate.bid > 100 ? 2 : 5)}` : '---'}
+            </div>
+            <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              {isBn ? 'উপরে এজেন্টিক সিগন্যাল দেখুন' : 'See Agentic Signal panel above for analysis'}
+            </p>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
