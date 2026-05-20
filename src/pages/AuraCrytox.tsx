@@ -58,7 +58,7 @@ export default function AuraCrytox() {
             <Zap className="w-3 h-3" /> AURACRYTOX
           </span>
           <h1 className={`text-xl md:text-2xl font-bold bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent`}>
-            {isBn ? 'ক্রিপ্টো মার্কেট অ্যানালাইসিস' : 'Crypto Market Intelligence'}
+            {isBn ? 'ক্রিপ্টো মার্কেট অ্যানালাইসিস' : 'CryptoX Intelligence'}
           </h1>
           <p className="text-[10px] text-gray-500 mt-0.5">by <span className="text-green-400 font-bold">Trading Bangla</span> • Powered by Binance + CoinGecko</p>
         </motion.div>
@@ -201,7 +201,7 @@ export default function AuraCrytox() {
           <div className={`px-3 py-2.5 border-b flex items-center gap-2 ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
             <Coins className="w-4 h-4 text-orange-400" />
             <h3 className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {isBn ? 'ক্রিপ্টো মার্কেট' : 'Crypto Market'}
+              {isBn ? 'ক্রিপ্টো মার্কেট' : 'CryptoX Market'}
             </h3>
             {loading ? (
               <div className="ml-auto w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
@@ -252,7 +252,7 @@ export default function AuraCrytox() {
             <span className="px-2 py-0.5 rounded bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-[10px]">AURA CRYPTOX</span>
             <span className="text-green-400 font-bold text-xs">by Trading Bangla</span>
           </div>
-          <p className="text-[9px] text-gray-500">{isBn ? 'রিয়েল-টাইম ক্রিপ্টো মার্কেট ইন্টেলিজেন্স' : 'Real-Time Crypto Market Intelligence'} — Binance + CoinGecko</p>
+          <p className="text-[9px] text-gray-500">{isBn ? 'রিয়েল-টাইম ক্রিপ্টো মার্কেট ইন্টেলিজেন্স' : 'Real-Time CryptoX Market Intelligence'} — Binance + CoinGecko</p>
         </div>
       </div>
     </div>

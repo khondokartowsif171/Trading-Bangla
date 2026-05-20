@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { DollarSign, ArrowUpCircle, ArrowDownCircle, AlertCircle } from 'lucide-react';
+import { useMarketData } from '@/hooks/useMarketData';
+import { DollarSign, ArrowUpCircle, ArrowDownCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 
 export default function OrderPanel() {
   const { darkMode, t, selectedAsset, balance, placeOrder } = useApp();
@@ -10,9 +11,19 @@ export default function OrderPanel() {
   const [limitPrice, setLimitPrice] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const { price: liveQuote } = useMarketData(selectedAsset?.symbol || 'XAU/USD');
+
   if (!selectedAsset) return null;
 
-  const price = orderType === 'market' ? selectedAsset.price : parseFloat(limitPrice) || selectedAsset.price;
+  const liveBid = liveQuote?.bid ?? selectedAsset.price;
+  const liveAsk = liveQuote?.ask ?? selectedAsset.price * 1.0002;
+  const isLive = !!liveQuote;
+
+  // For BUY use ask; for SELL use bid
+  const executionPrice = orderType === 'market'
+    ? (side === 'buy' ? liveAsk : liveBid)
+    : parseFloat(limitPrice) || liveBid;
+  const price = executionPrice;
   const total = price * (parseFloat(quantity) || 0);
   const isBuy = side === 'buy';
   const canAfford = isBuy ? total <= balance : true;
@@ -28,7 +39,7 @@ export default function OrderPanel() {
       return;
     }
 
-    const success = placeOrder(selectedAsset.symbol, side, orderType, qty, price);
+    const success = placeOrder(selectedAsset.symbol, side, orderType, qty, executionPrice);
     if (success) {
       setMessage({ type: 'success', text: t('orderSuccess') });
       setQuantity('');
@@ -45,10 +56,34 @@ export default function OrderPanel() {
       darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'
     }`}>
       <div className={`px-4 py-3 border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-        <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          {t('placeOrder')} — {selectedAsset.symbol}
-        </h3>
-        <div className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+        <div className="flex items-center justify-between">
+          <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('placeOrder')} — {selectedAsset.symbol}
+          </h3>
+          <div className={`flex items-center gap-1 text-[10px] font-medium ${isLive ? 'text-green-400' : 'text-gray-500'}`}>
+            {isLive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            {isLive ? 'Live' : 'Demo'}
+          </div>
+        </div>
+        {/* Bid / Ask spread display */}
+        <div className="flex items-center gap-3 mt-1.5">
+          <div>
+            <span className={`text-[9px] font-semibold uppercase ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Sell</span>
+            <div className={`text-sm font-bold tabular-nums ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+              {liveBid.toFixed(liveBid > 100 ? 2 : 5)}
+            </div>
+          </div>
+          <div className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
+            {liveQuote ? `Spread: ${liveQuote.spread.toFixed(liveBid > 100 ? 2 : 5)}` : '—'}
+          </div>
+          <div className="text-right">
+            <span className={`text-[9px] font-semibold uppercase ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Buy</span>
+            <div className={`text-sm font-bold tabular-nums ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+              {liveAsk.toFixed(liveAsk > 100 ? 2 : 5)}
+            </div>
+          </div>
+        </div>
+        <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
           {t('availableBalance')}: <span className="text-green-500 font-semibold">${balance.toLocaleString()}</span>
         </div>
       </div>

@@ -256,8 +256,8 @@ body::before{
 .toggle input{display:none}
 .tg-slider{position:absolute;inset:0;background:var(--border);border-radius:18px;transition:.3s}
 .tg-slider::before{content:'';position:absolute;width:12px;height:12px;left:3px;top:3px;background:var(--text2);border-radius:50%;transition:.3s}
-input:checked+.tg-slider{background:rgba(0,200,255,0.25)}
-input:checked+.tg-slider::before{transform:translateX(18px);background:var(--accent);box-shadow:0 0 8px var(--accent)}
+input:checked+.tg-slider{background:rgba(0,200,255,0.35);border:1px solid rgba(0,200,255,0.5)}
+input:checked+.tg-slider::before{transform:translateX(18px);background:var(--accent);box-shadow:0 0 10px var(--accent),0 0 20px rgba(0,200,255,0.4)}
 
 /* ─── STAT GRID ─── */
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -311,7 +311,7 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
     </div>
     <div class="topbar-sep">|</div>
     <a href="#" class="site-link">🌐 Trading Bangla</a>
-    <a href="/" style="font-family:var(--font-mono);font-size:.65rem;color:var(--text2);letter-spacing:1px;text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:2px;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back</a>
+    <a href="javascript:void(0)" onclick="(window.top||window.parent).history.back()" style="font-family:var(--font-mono);font-size:.65rem;color:var(--text2);letter-spacing:1px;text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:2px;transition:all .2s;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">← Back</a>
   </div>
   <div class="topbar-right">
     <div class="live-badge"><div class="live-dot"></div>LIVE</div>
@@ -341,9 +341,9 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
 
   <div class="nav-section">
     <div class="nav-label">EA Status</div>
-    <div class="nav-item"><span class="nav-icon">🤖</span>EA Running <span style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
-    <div class="nav-item"><span class="nav-icon">🛡️</span>Trailing Stop <span style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
-    <div class="nav-item"><span class="nav-icon">📐</span>Auto Lot <span style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
+    <div class="nav-item" onclick="toggleEA()" style="cursor:pointer" title="Click to toggle EA"><span class="nav-icon">🤖</span>EA Running <span id="sEA" style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
+    <div class="nav-item" onclick="toggleEl('tTrail','sTrail')" style="cursor:pointer" title="Click to toggle"><span class="nav-icon">🛡️</span>Trailing Stop <span id="sTrail" style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
+    <div class="nav-item" onclick="toggleEl('tAutoLot','sAutoLot')" style="cursor:pointer" title="Click to toggle"><span class="nav-icon">📐</span>Auto Lot <span id="sAutoLot" style="margin-left:auto;font-size:.6rem;color:var(--buy)">ON</span></div>
   </div>
 
   <div class="sidebar-symbols">
@@ -550,10 +550,10 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
       <div class="card">
         <div class="card-header"><div class="card-title">⚙️ EA Config</div></div>
         <div class="card-body">
-          <div class="toggle-row"><span class="tg-label">Auto Lot Size</span><label class="toggle"><input type="checkbox" checked id="tAutoLot"><span class="tg-slider"></span></label></div>
-          <div class="toggle-row"><span class="tg-label">Trailing Stop</span><label class="toggle"><input type="checkbox" checked id="tTrail"><span class="tg-slider"></span></label></div>
-          <div class="toggle-row"><span class="tg-label">Session Filter</span><label class="toggle"><input type="checkbox" id="tSession"><span class="tg-slider"></span></label></div>
-          <div class="toggle-row"><span class="tg-label">R:R Mode</span><label class="toggle"><input type="checkbox" id="tRR"><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Auto Lot Size</span><label class="toggle"><input type="checkbox" checked id="tAutoLot" onchange="syncSidebarStatus()"><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Trailing Stop</span><label class="toggle"><input type="checkbox" checked id="tTrail" onchange="syncSidebarStatus()"><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Session Filter</span><label class="toggle"><input type="checkbox" checked id="tSession" onchange="syncSidebarStatus()"><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">R:R Mode</span><label class="toggle"><input type="checkbox" checked id="tRR" onchange="syncSidebarStatus()"><span class="tg-slider"></span></label></div>
           <div class="mini-metric" style="margin-top:8px"><span class="mini-key">Risk %</span><span class="mini-val">1.00%</span></div>
           <div class="mini-metric"><span class="mini-key">Max Trades</span><span class="mini-val">3</span></div>
           <div class="mini-metric"><span class="mini-key">Magic #</span><span class="mini-val">202400</span></div>
@@ -614,11 +614,11 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
     <div style="display:flex;flex-direction:column;gap:8px">
       <div>
         <div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:4px">HOST</div>
-        <input id="wsHost" value="localhost" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
+        <input id="wsHost" value="195.35.7.154" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
       </div>
       <div>
         <div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:4px">PORT</div>
-        <input id="wsPort" value="8080" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
+        <input id="wsPort" value="9001" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
       </div>
       <button onclick="toggleConnect()" style="background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:2px;padding:9px;color:#000;font-family:var(--font-hud);font-size:.62rem;font-weight:700;letter-spacing:3px;cursor:pointer;text-transform:uppercase;transition:all .2s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">CONNECT MT5</button>
       <div style="font-family:var(--font-mono);font-size:.58rem;color:var(--text2);letter-spacing:.5px;line-height:1.6">
@@ -664,6 +664,34 @@ const state = {
   signalReasons:'',
   ws:null, connected:false
 };
+
+// ══════════════════════════════════════════════
+//  EA STATUS TOGGLES
+// ══════════════════════════════════════════════
+let eaRunning = true;
+
+function syncSidebarStatus(){
+  const trail = document.getElementById('tTrail');
+  const autoLot = document.getElementById('tAutoLot');
+  const sTrail = document.getElementById('sTrail');
+  const sAutoLot = document.getElementById('sAutoLot');
+  if(sTrail) { sTrail.textContent = trail?.checked ? 'ON' : 'OFF'; sTrail.style.color = trail?.checked ? 'var(--buy)' : 'var(--sell)'; }
+  if(sAutoLot) { sAutoLot.textContent = autoLot?.checked ? 'ON' : 'OFF'; sAutoLot.style.color = autoLot?.checked ? 'var(--buy)' : 'var(--sell)'; }
+}
+
+function toggleEl(inputId, statusId){
+  const cb = document.getElementById(inputId);
+  if(cb){ cb.checked = !cb.checked; }
+  syncSidebarStatus();
+  addNotif('info', inputId.replace('t','') + ' toggled ' + (cb?.checked ? 'ON' : 'OFF'), 'info');
+}
+
+function toggleEA(){
+  eaRunning = !eaRunning;
+  const el = document.getElementById('sEA');
+  if(el){ el.textContent = eaRunning ? 'ON' : 'OFF'; el.style.color = eaRunning ? 'var(--buy)' : 'var(--sell)'; }
+  addNotif('info', 'EA ' + (eaRunning ? 'activated' : 'paused'), eaRunning ? 'buy' : 'warn');
+}
 
 // ══════════════════════════════════════════════
 //  CLOCK
@@ -1109,11 +1137,12 @@ setInterval(()=>{if(state.candles.length>0){
   renderCandles();
 }},800);
 
-// Auto-connect to signal bot
-document.getElementById('wsHost').value = window.location.hostname || 'localhost';
+// Auto-connect to signal bot on VPS
+document.getElementById('wsHost').value = '195.35.7.154';
+document.getElementById('wsPort').value = '9001';
 setTimeout(() => {
   if (!state.connected) toggleConnect();
-}, 1000);
+}, 1500);
 </script>
 </body>
 </html>

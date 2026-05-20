@@ -4,30 +4,6 @@ import { useApp } from '@/context/AppContext';
 import AnimatedBackground from '@/components/AnimatedBackground';
 import { TrendingUp, Shield, Zap, Globe, BarChart3, ArrowRight, CheckCircle, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Asset, STOCKS } from '@/data/marketData';
-
-function LiveTicker({ assets }: { assets: Asset[] }) {
-  const { darkMode } = useApp();
-  return (
-    <div className={`overflow-hidden py-2 border-y ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-gray-50'}`}>
-      <div className="flex gap-8 animate-marquee">
-        {[...assets, ...assets].map((asset, i) => (
-          <div key={`${asset.symbol}-${i}`} className="flex items-center gap-2 shrink-0">
-            <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {asset.symbol}
-            </span>
-            <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              ${asset.price.toLocaleString()}
-            </span>
-            <span className={`text-xs font-medium ${asset.changePercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {asset.changePercent >= 0 ? '+' : ''}{asset.changePercent}%
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const features = [
   {
@@ -151,9 +127,6 @@ export default function Home() {
           </motion.div>
         </div>
       </section>
-
-      {/* Live Ticker */}
-      <LiveTicker assets={STOCKS} />
 
       {/* Stats */}
       <section className="py-12 px-4 sm:px-6 lg:px-8">
@@ -289,11 +262,10 @@ export default function Home() {
             <div>
               <h4 className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('market')}</h4>
               <div className="space-y-2">
-                {[t('stocks'), t('crypto'), t('forex'), 'Indices'].map(item => (
-                  <div key={item} className={`text-sm cursor-pointer ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
-                    {item}
-                  </div>
-                ))}
+                <Link to="/dashboard" className={`text-sm block ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>{t('stocks')}</Link>
+                <Link to="/crytox" className={`text-sm block ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>{t('crypto')}</Link>
+                <Link to="/dashboard" className={`text-sm block ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>{t('forex')}</Link>
+                <Link to="/dashboard" className={`text-sm block ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Indices</Link>
               </div>
             </div>
             <div>
@@ -303,15 +275,25 @@ export default function Home() {
                   {t('whatsappSupport')}
                 </a>
                 {[t('contactUs'), t('privacy'), t('terms')].map(item => (
-                  <div key={item} className={`text-sm cursor-pointer ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>
+                  <a
+                    key={item}
+                    href={`https://wa.me/${'8801612628112'}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Coming Soon — contact us via WhatsApp"
+                    className={`text-sm block ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
                     {item}
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>
           </div>
-          <div className={`mt-8 pt-6 border-t text-center text-sm ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
-            {t('footerText')} | tradingbangla.com
+          <div className={`mt-8 pt-6 border-t flex flex-col sm:flex-row items-center justify-center gap-2 text-sm ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+            <span>{t('footerText')} | tradingbangla.com</span>
+            <span className="text-xs font-semibold bg-gradient-to-r from-violet-400 to-purple-500 bg-clip-text text-transparent">
+              Powered by Aura AI
+            </span>
           </div>
         </div>
       </footer>

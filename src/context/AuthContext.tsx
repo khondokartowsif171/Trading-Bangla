@@ -13,9 +13,10 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ error: string | null }>;
+  login: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
   register: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
   loginWithGoogle: () => Promise<{ error: string | null }>;
+  resendConfirmation: (email: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
 }
 
@@ -52,8 +53,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const login = async (email: string, password: string): Promise<{ error: string | null; needsConfirmation?: boolean }> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      const needsConfirmation = error.message.toLowerCase().includes('email not confirmed') ||
+        error.message.toLowerCase().includes('confirm');
+      return { error: needsConfirmation ? 'আপনার email confirm করা হয়নি।' : error.message, needsConfirmation };
+    }
+    return { error: null };
+  };
+
+  const resendConfirmation = async (email: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
     if (error) return { error: error.message };
     return { error: null };
   };
@@ -82,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn: !!user, user, session, loading, login, register, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn: !!user, user, session, loading, login, register, loginWithGoogle, resendConfirmation, logout }}>
       {children}
     </AuthContext.Provider>
   );

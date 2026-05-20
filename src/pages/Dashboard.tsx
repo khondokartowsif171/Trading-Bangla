@@ -8,14 +8,18 @@ import OrderPanel from '@/components/OrderPanel';
 import MarketOverview from '@/components/MarketOverview';
 import PortfolioPanel from '@/components/PortfolioPanel';
 import NewsFeed from '@/components/NewsFeed';
+import EconomicCalendar from '@/components/EconomicCalendar';
+import PriceAlertsPanel from '@/components/PriceAlertsPanel';
+import ForexSessionClock from '@/components/ForexSessionClock';
 import AnimatedBackground from '@/components/AnimatedBackground';
-import { LayoutDashboard, List, NewspaperIcon } from 'lucide-react';
+import { LayoutDashboard, List, NewspaperIcon, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const mobileTabs = [
   { key: 'chart', icon: LayoutDashboard, label: 'Chart' },
   { key: 'trade', icon: List, label: 'Trade' },
   { key: 'news', icon: NewspaperIcon, label: 'News' },
+  { key: 'calendar', icon: CalendarDays, label: 'Calendar' },
 ] as const;
 
 export default function Dashboard() {
@@ -60,32 +64,16 @@ export default function Dashboard() {
             </div>
             <div className="lg:col-span-3 order-3 space-y-6">
               <OrderPanel />
-              <MarketOverview />
+              <ForexSessionClock />
             </div>
           </div>
           <div className="grid lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-5"><PortfolioPanel /></div>
+            <div className="lg:col-span-4"><PortfolioPanel /></div>
             <div className="lg:col-span-4"><NewsFeed /></div>
-            <div className="lg:col-span-3">
-              <div className={`rounded-2xl border p-4 ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
-                <h3 className={`font-semibold text-sm mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {t('market')} {darkMode ? '🌙' : '☀️'}
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    ['S&P 500', '5,234.18', '+0.32%', 'text-green-500'],
-                    ['NASDAQ', '18,435.72', '+0.54%', 'text-green-500'],
-                    ['DSEX (Dhaka)', '6,234.50', '+0.18%', 'text-green-500'],
-                    ['BTC Dominance', '52.4%', '', darkMode ? 'text-gray-300' : 'text-gray-700'],
-                    ['Fear & Greed', '65 — Greed', '', 'text-yellow-500'],
-                  ].map(([name, val, change, cls]) => (
-                    <div key={name} className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      <span>{name}</span>
-                      <span className={cls || ''}>{val} {change && <span className={cls}>({change})</span>}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="lg:col-span-4 space-y-6">
+              <ForexSessionClock />
+              <EconomicCalendar />
+              <PriceAlertsPanel />
             </div>
           </div>
         </div>
@@ -148,26 +136,19 @@ export default function Dashboard() {
                 className="space-y-4"
               >
                 <NewsFeed />
-                <div className={`rounded-2xl border p-4 ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
-                  <h3 className={`font-semibold text-sm mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                    {t('market')} Snapshot
-                  </h3>
-                  <div className="space-y-2.5">
-                    {[
-                      ['S&P 500', '5,234.18', '+0.32%'],
-                      ['NASDAQ', '18,435.72', '+0.54%'],
-                      ['DSEX', '6,234.50', '+0.18%'],
-                      ['BTC Dom.', '52.4%', ''],
-                    ].map(([name, val, chg]) => (
-                      <div key={name} className="flex justify-between text-xs">
-                        <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{name}</span>
-                        <span className={darkMode ? 'text-gray-200' : 'text-gray-900'}>
-                          {val} {chg && <span className="text-green-500">({chg})</span>}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              </motion.div>
+            )}
+
+            {mobileTab === 'calendar' && (
+              <motion.div
+                key="calendar"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-4"
+              >
+                <EconomicCalendar />
+                <PriceAlertsPanel />
               </motion.div>
             )}
           </AnimatePresence>

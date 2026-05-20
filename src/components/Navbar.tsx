@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
-import { Menu, X, Moon, Sun, Globe, TrendingUp, Zap, LogOut, User, LayoutDashboard } from 'lucide-react';
+import { usePriceAlerts } from '@/hooks/usePriceAlerts';
+import { Menu, X, Moon, Sun, Globe, TrendingUp, Zap, LogOut, User, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
   const { darkMode, toggleDarkMode, lang, setLang, t, balance } = useApp();
   const { isLoggedIn, user, logout } = useAuth();
+  const { pendingCount } = usePriceAlerts();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
@@ -15,10 +17,11 @@ export default function Navbar() {
   const navLinks = [
     { to: '/', label: t('home') },
     { to: '/dashboard', label: t('dashboard') },
-    { to: '/trade', label: t('trade') },
+    { to: '/ea-dashboard', label: t('trade') },
     { to: '/portfolio', label: t('portfolio') },
     { to: '/ea-analytics', label: t('eaAnalytics') },
     { to: '/crytox', label: t('crypto') },
+    { to: '/blog', label: 'Blog' },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -97,6 +100,22 @@ export default function Navbar() {
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
+            {/* Price Alerts Bell */}
+            <Link
+              to="/dashboard"
+              className={`relative p-2 rounded-lg transition-colors hidden md:block ${
+                darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title="Price Alerts"
+            >
+              <Bell className="w-4 h-4" />
+              {pendingCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-yellow-500 text-gray-900 text-[8px] font-black flex items-center justify-center leading-none">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
+            </Link>
+
             {/* Aura Agent icon (mobile only — opens bottom sheet) */}
             <button
               onClick={() => {
@@ -145,14 +164,6 @@ export default function Navbar() {
                       >
                         <User className="w-3.5 h-3.5" />
                         My Profile
-                      </Link>
-                      <Link
-                        to="/admin"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
-                      >
-                        <LayoutDashboard className="w-3.5 h-3.5" />
-                        Admin Panel
                       </Link>
                       <div className="border-t border-gray-800" />
                       <button

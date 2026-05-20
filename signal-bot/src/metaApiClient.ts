@@ -1,4 +1,4 @@
-import MetaApi from 'metaapi.cloud';
+import MetaApi from 'metaapi.cloud-sdk';
 import { Candle } from './indicators';
 
 export type MT5Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';

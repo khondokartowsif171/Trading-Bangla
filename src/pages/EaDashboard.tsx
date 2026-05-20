@@ -63,7 +63,7 @@ export default function EaDashboard() {
         </Link>
         <span className="text-gray-700">|</span>
         <span className="text-xs font-bold text-yellow-400">📡 Trading Bangla EA Monitor</span>
-        <span className="ml-auto text-xs text-gray-500">XAU/USD Signal Bot — Port 8080</span>
+        <span className="ml-auto text-xs text-gray-500">XAU/USD Signal Bot — VPS:9001</span>
       </div>
 
       {/* Full-height iframe */}

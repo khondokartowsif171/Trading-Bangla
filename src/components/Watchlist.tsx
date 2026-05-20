@@ -1,13 +1,22 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAllPrices } from '@/hooks/useMarketData';
 import { Star, Search, TrendingUp, TrendingDown, X, Plus } from 'lucide-react';
 
 interface WatchlistProps {
   compact?: boolean;
 }
 
+function formatLivePrice(symbol: string, price: number): string {
+  if (symbol.includes('XAU') || symbol.includes('BTC') || symbol.includes('ETH')) return price.toFixed(2);
+  if (symbol.includes('JPY')) return price.toFixed(3);
+  if (symbol.includes('/')) return price.toFixed(5);
+  return price.toFixed(2);
+}
+
 export default function Watchlist({ compact = false }: WatchlistProps) {
   const { assets, darkMode, t, watchlist, toggleWatchlist, setSelectedAsset, selectedAsset, activeMarketTab, setActiveMarketTab } = useApp();
+  const livePrices = useAllPrices();
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
 
@@ -107,7 +116,11 @@ export default function Watchlist({ compact = false }: WatchlistProps) {
         {filterByTab.map(asset => {
           const isSelected = selectedAsset?.symbol === asset.symbol;
           const isWatchlisted = watchlist.includes(asset.symbol);
-          const isPositive = asset.changePercent >= 0;
+          const liveQ = livePrices[asset.symbol];
+          const displayPrice = liveQ ? liveQ.bid : asset.price;
+          const displayChangePercent = liveQ ? liveQ.changePercent : asset.changePercent;
+          const isPositive = displayChangePercent >= 0;
+          const priceStr = liveQ ? formatLivePrice(asset.symbol, displayPrice) : `${displayPrice.toLocaleString()}`;
 
           return (
             <div
@@ -140,14 +153,15 @@ export default function Watchlist({ compact = false }: WatchlistProps) {
                 </div>
               </div>
               <div className="text-right shrink-0 ml-2">
-                <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  ${asset.price.toLocaleString()}
+                <div className={`text-sm font-semibold flex items-center justify-end gap-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {liveQ && <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />}
+                  {priceStr}
                 </div>
                 <div className={`text-xs font-medium flex items-center justify-end gap-0.5 ${
                   isPositive ? 'text-green-500' : 'text-red-500'
                 }`}>
                   {isPositive ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                  {isPositive ? '+' : ''}{asset.changePercent}%
+                  {isPositive ? '+' : ''}{displayChangePercent.toFixed(2)}%
                 </div>
               </div>
             </div>

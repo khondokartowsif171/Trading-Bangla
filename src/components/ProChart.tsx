@@ -15,6 +15,7 @@ import {
   Time,
 } from 'lightweight-charts';
 import { BotSignal } from '@/hooks/useSignalBot';
+import { useMarketData } from '@/hooks/useMarketData';
 
 interface ProChartProps {
   darkMode: boolean;
@@ -191,6 +192,19 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
   const [candles, setCandles] = useState<OHLCV[]>(() => generateCandles('XAU/USD', 'M15'));
   const [chartError, setChartError] = useState<string | null>(null);
 
+  // Real market data
+  const { price: livePrice, candles: realCandles, ready: marketReady } = useMarketData(symbol);
+
+  // Update chart candles when real data arrives (XAU/USD and forex pairs)
+  useEffect(() => {
+    if (!marketReady || realCandles.length < 5) return;
+    const converted: OHLCV[] = realCandles.map(c => ({
+      time: c.time as UTCTimestamp,
+      open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+    }));
+    setCandles(converted);
+  }, [realCandles, marketReady, symbol]);
+
   const toggleIndicator = (ind: IndicatorToggle) => {
     setIndicators(prev => ({ ...prev, [ind]: !prev[ind] }));
   };
@@ -365,10 +379,20 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
   }, [initCharts]);
 
   useEffect(() => {
-    const data = generateCandles(symbol, timeframe);
-    setCandles(data);
-    populateData(data);
-  }, [symbol, timeframe, populateData]);
+    // Use real data if available, otherwise fall back to generated
+    if (marketReady && realCandles.length >= 5) {
+      const converted: OHLCV[] = realCandles.map(c => ({
+        time: c.time as UTCTimestamp,
+        open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+      }));
+      setCandles(converted);
+      populateData(converted);
+    } else {
+      const data = generateCandles(symbol, timeframe);
+      setCandles(data);
+      populateData(data);
+    }
+  }, [symbol, timeframe, populateData, marketReady, realCandles]);
 
   useEffect(() => {
     if (!mainChartRef.current) return;
@@ -479,16 +503,31 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
           ))}
         </div>
 
+        {/* Live price badge from real market data */}
+        {livePrice && (
+          <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+            livePrice.change >= 0
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-red-500/20 text-red-400'
+          }`}>
+            {livePrice.bid > 100 ? livePrice.bid.toFixed(2) : livePrice.bid.toFixed(5)}
+            <span className="ml-1 opacity-70">
+              {livePrice.change >= 0 ? '+' : ''}{livePrice.changePercent.toFixed(2)}%
+            </span>
+          </span>
+        )}
+
         {atr != null && (
           <span className={`text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-gray-800 text-yellow-400' : 'bg-yellow-50 text-yellow-700'}`}>
             ATR {formatPrice(atr)}
           </span>
         )}
 
-        <span className={`text-xs px-2 py-1 rounded-full font-medium ${botOnline
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+          livePrice ? 'bg-green-500/20 text-green-400' : botOnline
           ? 'bg-green-500/20 text-green-400'
           : 'bg-red-500/20 text-red-400'}`}>
-          {botOnline ? '● LIVE' : '○ OFFLINE'}
+          {livePrice ? '● LIVE' : botOnline ? '● LIVE' : '○ OFFLINE'}
         </span>
       </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, LogIn, UserPlus, X, Eye, EyeOff } from 'lucide-react';
+import { Lock, LogIn, UserPlus, X, Eye, EyeOff, Mail, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface LoginModalProps {
@@ -11,7 +11,7 @@ interface LoginModalProps {
 type Tab = 'login' | 'register';
 
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
-  const { login, register, loginWithGoogle } = useAuth();
+  const { login, register, loginWithGoogle, resendConfirmation } = useAuth();
   const [tab, setTab] = useState<Tab>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +21,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   const reset = () => {
     setEmail('');
@@ -30,6 +33,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError('');
     setSuccess('');
     setShowPassword(false);
+    setNeedsConfirmation(false);
+    setResendSuccess(false);
   };
 
   const switchTab = (t: Tab) => {
@@ -40,15 +45,25 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNeedsConfirmation(false);
     setLoading(true);
-    const { error } = await login(email.trim(), password);
+    const result = await login(email.trim(), password);
     setLoading(false);
-    if (error) {
-      setError(error);
+    if (result.error) {
+      setError(result.error);
+      if (result.needsConfirmation) setNeedsConfirmation(true);
     } else {
       reset();
       onClose();
     }
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    const { error } = await resendConfirmation(email.trim());
+    setResendLoading(false);
+    if (error) setError('Resend failed: ' + error);
+    else setResendSuccess(true);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -68,7 +83,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     if (error) {
       setError(error);
     } else {
-      setSuccess('Registration সফল! আপনার email confirm করুন, তারপর login করুন।');
+      setSuccess('Account তৈরি হয়েছে! এখন Login tab-এ গিয়ে login করুন।');
     }
   };
 
@@ -218,14 +233,26 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
                       <AnimatePresence>
                         {error && (
-                          <motion.p
+                          <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                            className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 space-y-2"
                           >
-                            {error}
-                          </motion.p>
+                            <p className="text-xs text-red-400">{error}</p>
+                            {needsConfirmation && !resendSuccess && (
+                              <button type="button" onClick={handleResend} disabled={resendLoading}
+                                className="flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-60 transition-colors">
+                                <RefreshCw className={`w-3 h-3 ${resendLoading ? 'animate-spin' : ''}`} />
+                                {resendLoading ? 'Sending…' : 'Confirmation email পাঠান'}
+                              </button>
+                            )}
+                            {resendSuccess && (
+                              <p className="flex items-center gap-1.5 text-xs text-green-400">
+                                <Mail className="w-3 h-3" /> Confirmation email পাঠানো হয়েছে!
+                              </p>
+                            )}
+                          </motion.div>
                         )}
                       </AnimatePresence>
 
