@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from '@/context/AppContext';
+import { AuthProvider } from '@/context/AuthContext';
 import Navbar from '@/components/Navbar';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import AIChat from '@/components/AIChat';
@@ -11,6 +12,9 @@ import PortfolioPage from '@/pages/PortfolioPage';
 import EAAnalytics from '@/pages/EAAnalytics';
 import ForexMT5 from '@/pages/ForexMT5';
 import AuraCrytox from '@/pages/AuraCrytox';
+import EaDashboard from '@/pages/EaDashboard';
+import UserProfile from '@/pages/UserProfile';
+import AdminDashboard from '@/pages/AdminDashboard';
 
 function AppContent() {
   const { darkMode } = useApp();
@@ -30,8 +34,11 @@ function AppContent() {
           <Route path="/trade" element={<Trade />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/ea-analytics" element={<EAAnalytics />} />
+          <Route path="/ea-dashboard" element={<EaDashboard />} />
+          <Route path="/profile" element={<UserProfile />} />
           <Route path="/forex" element={<ForexMT5 />} />
           <Route path="/crytox" element={<AuraCrytox />} />
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </div>
       {/* Desktop floating widgets */}
@@ -50,9 +57,11 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <AuthProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

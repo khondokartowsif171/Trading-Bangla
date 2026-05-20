@@ -5,7 +5,7 @@ export const translations = {
   en: {
     home: 'Home',
     dashboard: 'Dashboard',
-    trade: 'Trade',
+    trade: 'MT5 Terminal',
     portfolio: 'Portfolio',
     watchlist: 'Watchlist',
     settings: 'Settings',
@@ -105,7 +105,7 @@ export const translations = {
   bn: {
     home: 'হোম',
     dashboard: 'ড্যাশবোর্ড',
-    trade: 'ট্রেড',
+    trade: 'MT5 টার্মিনাল',
     portfolio: 'পোর্টফোলিও',
     watchlist: 'ওয়াচলিস্ট',
     settings: 'সেটিংস',

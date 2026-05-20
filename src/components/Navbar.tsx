@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { Menu, X, Moon, Sun, Globe, TrendingUp, Zap } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { Menu, X, Moon, Sun, Globe, TrendingUp, Zap, LogOut, User, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
   const { darkMode, toggleDarkMode, lang, setLang, t, balance } = useApp();
+  const { isLoggedIn, user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
 
   const navLinks = [
@@ -109,6 +112,69 @@ export default function Navbar() {
               <Zap className="w-4 h-4" />
               <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
             </button>
+
+            {/* User avatar / logout (desktop) */}
+            {isLoggedIn && user ? (
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setUserMenuOpen(v => !v)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all"
+                >
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center text-gray-900 text-xs font-bold">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs font-medium text-yellow-400 max-w-[80px] truncate">{user.name}</span>
+                </button>
+                <AnimatePresence>
+                  {userMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden z-50"
+                    >
+                      <div className="px-4 py-3 border-b border-gray-800">
+                        <p className="text-xs font-semibold text-white truncate">{user.name}</p>
+                        <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                      </div>
+                      <Link
+                        to="/profile"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
+                      >
+                        <User className="w-3.5 h-3.5" />
+                        My Profile
+                      </Link>
+                      <Link
+                        to="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
+                      >
+                        <LayoutDashboard className="w-3.5 h-3.5" />
+                        Admin Panel
+                      </Link>
+                      <div className="border-t border-gray-800" />
+                      <button
+                        onClick={() => { logout(); setUserMenuOpen(false); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        Logout
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <Link
+                to="/ea-analytics"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-xs font-medium text-yellow-400 transition-all"
+              >
+                <User className="w-3.5 h-3.5" />
+                Login
+              </Link>
+            )}
 
             {/* Mobile menu toggle */}
             <button

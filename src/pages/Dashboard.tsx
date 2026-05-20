@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import TradingChart from '@/components/TradingChart';
+import { useAuth } from '@/context/AuthContext';
+import { useSignalBot } from '@/hooks/useSignalBot';
+import ProChart from '@/components/ProChart';
 import Watchlist from '@/components/Watchlist';
 import OrderPanel from '@/components/OrderPanel';
 import MarketOverview from '@/components/MarketOverview';
@@ -18,6 +20,8 @@ const mobileTabs = [
 
 export default function Dashboard() {
   const { darkMode, t } = useApp();
+  const { user, isLoggedIn } = useAuth();
+  const { status: botStatus, latestSignal } = useSignalBot();
   const [mobileTab, setMobileTab] = useState<string>('chart');
 
   return (
@@ -29,11 +33,19 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className={`text-lg md:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {t('welcomeBack')} 👋
+              {t('welcomeBack')}{isLoggedIn && user ? `, ${user.name}` : ''} 👋
             </h1>
             <p className={`text-xs md:text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {t('paperTrading')} • {t('demoAccount')}
             </p>
+          </div>
+          <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium ${
+            botStatus === 'connected'
+              ? 'bg-green-500/15 text-green-400'
+              : 'bg-red-500/15 text-red-400'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${botStatus === 'connected' ? 'bg-green-400' : 'bg-red-400'}`} />
+            {botStatus === 'connected' ? 'Bot Connected' : 'Bot Offline'}
           </div>
         </div>
 
@@ -44,7 +56,7 @@ export default function Dashboard() {
               <Watchlist compact />
             </div>
             <div className="lg:col-span-6 order-1 lg:order-2">
-              <TradingChart />
+              <ProChart darkMode={darkMode} latestSignal={latestSignal} botStatus={botStatus} />
             </div>
             <div className="lg:col-span-3 order-3 space-y-6">
               <OrderPanel />
@@ -108,7 +120,7 @@ export default function Dashboard() {
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-4"
               >
-                <TradingChart />
+                <ProChart darkMode={darkMode} latestSignal={latestSignal} botStatus={botStatus} />
                 <Watchlist compact />
               </motion.div>
             )}

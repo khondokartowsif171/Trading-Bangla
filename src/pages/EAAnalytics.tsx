@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useForexRates } from '@/hooks/useForexData';
 import { getRealSignals, SignalResult } from '@/services/realSignalEngine';
-import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, Shield, Activity, ExternalLink, Zap, LineChart, RefreshCw } from 'lucide-react';
+import { useSignalBot } from '@/hooks/useSignalBot';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BarChart3, TrendingUp, Shield, Activity, ExternalLink, Zap, LineChart, RefreshCw, Wifi, WifiOff, Radio, Lock, LogIn } from 'lucide-react';
+import LoginModal from '@/components/LoginModal';
+import { Link } from 'react-router-dom';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -70,14 +74,21 @@ function SignalCard({ signal }: { signal: SignalResult }) {
 
 export default function EAAnalytics() {
   const { darkMode, lang, t } = useApp();
+  const { isLoggedIn } = useAuth();
   const { rates } = useForexRates();
   const isBn = lang === 'bn';
   const goldRate = rates['XAU/USD'];
+
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   const [signals, setSignals] = useState<SignalResult[]>([]);
   const [signalsKey, setSignalsKey] = useState(0);
   const [loadingSignals, setLoadingSignals] = useState(true);
   const [mainIndicators, setMainIndicators] = useState<SignalResult['indicators'] | null>(null);
+
+  // Live bot signal via WebSocket
+  const { status: botStatus, latestSignal: botSignal, botStats } = useSignalBot();
+  const botConnected = botStatus === 'connected';
 
   const fetchSignals = async () => {
     setLoadingSignals(true);
@@ -172,6 +183,94 @@ export default function EAAnalytics() {
     <div className={darkMode ? 'bg-gray-950' : 'bg-gray-50'}>
       <LoadingBar />
 
+      {/* Login Modal */}
+      <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+
+      {/* ── GUEST GATE ── */}
+      {!isLoggedIn && (
+        <div className="max-w-7xl mx-auto px-4 pt-6 space-y-6">
+          {/* Stat cards teaser */}
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+            <div className="inline-block mb-3 px-5 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-700 font-bold text-lg text-white shadow-lg">
+              🇧🇩 {t('brandName')}
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-amber-400 bg-clip-text text-transparent">
+              MT5 XAUUSD EA Analytics Dashboard
+            </h1>
+            <p className="text-gray-400 mt-1 text-lg">{isBn ? 'বিশ্বমানের পারফরম্যান্স বিশ্লেষণ ও কোড রিভিউ' : 'World-Class Performance Analysis & Code Review'}</p>
+          </motion.div>
+
+          {/* Teaser stat cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard label={isBn ? 'বিশ্লেষিত EA সংখ্যা' : 'EAs Analyzed'} value="3,142" sub={isBn ? '↑ ২০২৬ আপডেট' : '↑ 2026 Update'} />
+            <StatCard label={isBn ? 'বিশ্ব গড় মাসিক রিটার্ন' : 'Avg Monthly Return'} value="22.8%" sub={isBn ? '↑ Top ১০০ EAs' : '↑ Top 100 EAs'} />
+            <StatCard label={isBn ? 'সেরা উইন রেট' : 'Best Win Rate'} value="89.4%" sub={isBn ? 'ATR-ভিত্তিক EAs' : 'ATR-based EAs'} subColor="text-yellow-400" />
+            <StatCard label={isBn ? 'আপনার EA রিস্ক স্কোর' : 'Your EA Risk Score'} value="2.3/10" sub={isBn ? 'লো রিস্ক ✓' : 'Low Risk ✓'} subColor="text-green-400" />
+          </div>
+
+          {/* Blurred signal preview + overlay */}
+          <div className="relative rounded-xl overflow-hidden">
+            {/* Blurred signal card */}
+            <div className="pointer-events-none" style={{ filter: 'blur(8px)', userSelect: 'none' }}>
+              {signals.length > 0 && (
+                <div className={`rounded-xl border ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'} backdrop-blur-md p-5`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-bold bg-gradient-to-r from-yellow-400 to-amber-400 bg-clip-text text-transparent">
+                      🔴 Live Real Signals (EA Engine)
+                    </h2>
+                    <span className="flex items-center gap-1 text-[10px] text-green-400">
+                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                      8s update
+                    </span>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <SignalCard signal={signals[0]} />
+                  </div>
+                </div>
+              )}
+              {/* Placeholder when signals haven't loaded yet */}
+              {signals.length === 0 && (
+                <div className={`rounded-xl border ${darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-white/80'} p-10 text-center`}>
+                  <p className="text-gray-400 text-sm">Signal loading...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Lock overlay */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/60 backdrop-blur-[2px] rounded-xl">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-center px-6 py-8 max-w-sm"
+              >
+                <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-yellow-500/10 border-2 border-yellow-500/40 flex items-center justify-center">
+                  <Lock className="w-7 h-7 text-yellow-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">
+                  🔒 Full XAU/USD Signals দেখতে Login করুন
+                </h3>
+                <p className="text-gray-400 text-sm mb-5">
+                  Real-time BUY/SELL signals, confidence scores, SL/TP levels — সব কিছু দেখতে login করুন।
+                </p>
+                <button
+                  onClick={() => setLoginModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-2.5 font-bold text-sm text-gray-900 hover:from-yellow-400 hover:to-amber-400 transition-all shadow-lg shadow-yellow-500/20"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Login করুন
+                </button>
+                <p className="text-xs text-gray-500 mt-3">
+                  Login করে সব real-time signals দেখুন
+                </p>
+              </motion.div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOGGED-IN FULL VIEW ── */}
+      {isLoggedIn && (
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
@@ -182,6 +281,28 @@ export default function EAAnalytics() {
             MT5 XAUUSD EA Analytics Dashboard
           </h1>
           <p className="text-gray-400 mt-1 text-lg">{isBn ? 'বিশ্বমানের পারফরম্যান্স বিশ্লেষণ ও কোড রিভিউ' : 'World-Class Performance Analysis & Code Review'}</p>
+
+          {/* Bot status badge + EA Terminal button (logged-in only) */}
+          <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
+            {botConnected ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 border border-green-500/30 px-3 py-1 text-xs font-bold text-green-400">
+                <Wifi className="w-3.5 h-3.5" />
+                ✅ Live Bot Connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 border border-red-500/30 px-3 py-1 text-xs font-bold text-red-400">
+                <WifiOff className="w-3.5 h-3.5" />
+                🔴 Bot Offline
+              </span>
+            )}
+            <Link
+              to="/ea-dashboard"
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-yellow-500 to-amber-500 px-4 py-1.5 text-xs font-bold text-gray-900 hover:from-yellow-400 hover:to-amber-400 transition-all shadow-md shadow-yellow-500/20"
+            >
+              📡 Full EA Terminal <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+
           <div className="flex justify-center gap-3 mt-3 flex-wrap">
             {[
               { text: isBn ? '✅ লাইভ ট্রেডিং' : '✅ Live Trading', cls: 'bg-green-600' },
@@ -281,7 +402,7 @@ export default function EAAnalytics() {
           <StatCard label={isBn ? 'বিশ্লেষিত EA সংখ্যা' : 'EAs Analyzed'} value="3,142" sub={isBn ? '↑ ২০২৬ আপডেট' : '↑ 2026 Update'} />
           <StatCard label={isBn ? 'বিশ্ব গড় মাসিক রিটার্ন' : 'Avg Monthly Return'} value="22.8%" sub={isBn ? '↑ Top ১০০ EAs' : '↑ Top 100 EAs'} />
           <StatCard label={isBn ? 'সেরা উইন রেট' : 'Best Win Rate'} value="89.4%" sub={isBn ? 'ATR-ভিত্তিক EAs' : 'ATR-based EAs'} subColor="text-yellow-400" />
-          <StatCard label={isBn ? 'আপনার EA রিস্ক স্কোর' : 'Your EA Risk Score'} value="6.5/10" sub={isBn ? 'মিডিয়াম রিস্ক' : 'Medium Risk'} subColor="text-orange-400" />
+          <StatCard label={isBn ? 'আপনার EA রিস্ক স্কোর' : 'Your EA Risk Score'} value="2.3/10" sub={isBn ? 'লো রিস্ক ✓' : 'Low Risk ✓'} subColor="text-green-400" />
         </div>
 
         {/* Charts */}
@@ -492,6 +613,7 @@ export default function EAAnalytics() {
           </p>
         </motion.div>
       </div>
+      )} {/* end isLoggedIn */}
     </div>
   );
 }

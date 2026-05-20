@@ -29,10 +29,10 @@ export const EA_PERFORMERS: EAPerformer[] = [
 ];
 
 export const CODE_ANALYSIS: CodeAnalysis[] = [
-  { component: 'Entry Logic', currentStatus: '✓ Support + MA + Volume', issue: 'iMA null check missing', improvement: 'Add ATR filter', riskScore: 6 },
-  { component: 'Risk Management', currentStatus: '⚠ Fixed SL/TP', issue: 'No dynamic adjustment', improvement: 'Use ATR × 1.5 (most important!)', riskScore: 8 },
-  { component: 'Position Management', currentStatus: '✓ Break Even + Partial Close', issue: 'Loop syntax error (i=0)', improvement: 'Add trailing stop', riskScore: 4 },
-  { component: 'Volume Analysis', currentStatus: '⚠ Basic comparison', issue: 'No avg volume check', improvement: 'Use 1.5x avg volume spike', riskScore: 5 },
+  { component: 'Entry Logic', currentStatus: '✓ EMA20/50/200 + ATR Filter', issue: 'Multi-timeframe confluence added', improvement: 'M15+H1+H4 agreement required', riskScore: 2 },
+  { component: 'Risk Management', currentStatus: '✓ ATR × 2.0 Dynamic SL/TP', issue: 'Fixed SL removed — ATR-based', improvement: 'SL=ATR×2.0, TP=ATR×5.0 (1:2.5 RR)', riskScore: 2 },
+  { component: 'Position Management', currentStatus: '✓ Confidence-based lot sizing', issue: '80%+ confidence required to trade', improvement: 'Max 2 concurrent trades, 3% daily DD cap', riskScore: 2 },
+  { component: 'Volume Analysis', currentStatus: '✓ RSI zone filter (40-58)', issue: 'Extreme RSI auto-rejected', improvement: 'BB squeeze + MACD crossover confirmed', riskScore: 3 },
 ];
 
 export interface OptimizedParam {
