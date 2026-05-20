@@ -3,7 +3,7 @@ import { Signal } from './signalEngine';
 import { RiskStats } from './riskManager';
 
 export interface WsMessage {
-  type: 'signal' | 'stats' | 'heartbeat' | 'error' | 'connected';
+  type: 'signal' | 'live' | 'stats' | 'heartbeat' | 'error' | 'connected';
   data: unknown;
   timestamp: number;
 }
@@ -12,6 +12,7 @@ export class WsPublisher {
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
   private lastSignal: Signal | null = null;
+  private lastLive = new Map<string, Signal>(); // continuous read per symbol
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
   start(port: number): void {
@@ -30,6 +31,11 @@ export class WsPublisher {
 
       if (this.lastSignal) {
         this.send(ws, { type: 'signal', data: this.lastSignal, timestamp: Date.now() });
+      }
+
+      // Send the latest live read for every symbol so the dashboard is populated instantly
+      for (const sig of this.lastLive.values()) {
+        this.send(ws, { type: 'live', data: sig, timestamp: Date.now() });
       }
 
       ws.on('close', () => {
@@ -68,6 +74,12 @@ export class WsPublisher {
     this.lastSignal = signal;
     this.broadcast({ type: 'signal', data: signal, timestamp: Date.now() });
     console.log(`[WS] Signal broadcast: ${signal.direction} ${signal.symbol} @ ${signal.entry} (confidence: ${signal.confidence}%)`);
+  }
+
+  // Continuous real-time read (every poll) — updates dashboard without trade-alert spam
+  broadcastLive(signal: Signal): void {
+    this.lastLive.set(signal.symbol, signal);
+    this.broadcast({ type: 'live', data: signal, timestamp: Date.now() });
   }
 
   broadcastStats(stats: RiskStats): void {

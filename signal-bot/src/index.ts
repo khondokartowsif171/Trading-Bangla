@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { generateSignal } from './signalEngine';
+import { generateSignal, generateLiveSignal } from './signalEngine';
 import { RiskManager } from './riskManager';
 import { WsPublisher } from './wsPublisher';
 import { Candle } from './indicators';
@@ -50,6 +50,14 @@ function upsertCandle(list: Candle[], candle: Candle, isFinal: boolean): void {
     list.push(candle);
     if (list.length > 300) list.shift();
   }
+}
+
+// Continuous real-time read — broadcast every poll, even when not a strong 3/3 alert
+function runLiveCycle(symbol: string): void {
+  const buf = allCandles[symbol];
+  if (!buf || buf['15m'].length < 50 || buf['1h'].length < 50 || buf['4h'].length < 30) return;
+  const live = generateLiveSignal(buf['15m'], buf['1h'], buf['4h'], DISPLAY_NAMES[symbol] ?? symbol);
+  if (live) publisher.broadcastLive(live);
 }
 
 function runSignalCycle(symbol: string): void {
@@ -110,8 +118,21 @@ async function main(): Promise<void> {
   // Subscribe to live updates for all symbols
   stream.subscribeAll(SYMBOLS, ['15m', '1h', '4h'], (symbol, interval, candle, isFinal) => {
     const key = interval as '15m' | '1h' | '4h';
-    if (allCandles[symbol]?.[key]) {
-      upsertCandle(allCandles[symbol][key], candle, isFinal);
+    const buf = allCandles[symbol]?.[key];
+    if (buf) {
+      const last = buf[buf.length - 1];
+      if (isFinal || !last || last.time === candle.time) {
+        upsertCandle(buf, candle, isFinal);
+      } else {
+        // Live tick: fold the latest price into the forming candle so indicators move in real time
+        last.close = candle.close;
+        last.high = Math.max(last.high, candle.close);
+        last.low = Math.min(last.low, candle.close);
+      }
+    }
+    // Real-time read broadcast — once per poll per symbol (1h fires once per poll)
+    if (interval === '1h') {
+      runLiveCycle(symbol);
     }
     if (interval === '15m' && isFinal) {
       const name = DISPLAY_NAMES[symbol] ?? symbol;
@@ -120,12 +141,17 @@ async function main(): Promise<void> {
     }
   });
 
-  // Initial signal cycle for all symbols (staggered)
+  // Initial cycles for all symbols (staggered)
   for (let i = 0; i < SYMBOLS.length; i++) {
-    setTimeout(() => runSignalCycle(SYMBOLS[i]), 5000 + i * 2000);
+    setTimeout(() => { runLiveCycle(SYMBOLS[i]); runSignalCycle(SYMBOLS[i]); }, 4000 + i * 1500);
   }
 
-  // Periodic cycle every 5 minutes
+  // Continuous real-time read — every 20s (guarantees live stream regardless of poll timing)
+  setInterval(() => {
+    for (const symbol of SYMBOLS) runLiveCycle(symbol);
+  }, 20 * 1000);
+
+  // Strong trade-alert cycle every 5 minutes
   setInterval(() => {
     for (const symbol of SYMBOLS) runSignalCycle(symbol);
   }, 5 * 60 * 1000);

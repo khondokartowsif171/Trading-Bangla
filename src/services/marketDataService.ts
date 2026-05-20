@@ -26,10 +26,11 @@ type CandleCallback = (symbol: string, candles: OHLC[]) => void;
 
 const listeners = new Set<PriceCallback>();
 const candleListeners = new Set<CandleCallback>();
-let binanceWs: WebSocket | null = null;
+let goldInterval: ReturnType<typeof setInterval> | null = null;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-const BINANCE_WS = 'wss://stream.binance.com:9443/ws';
+// Real-time gold spot price — free, CORS-friendly, no key (matches TradingView ~$4,545)
+const GOLD_API = 'https://api.gold-api.com/price/XAU';
 const FRANKFURTER_URL = 'https://api.frankfurter.dev/v2';
 
 const SYMBOLS = [
@@ -162,19 +163,13 @@ function updatePrice(sym: string, bid: number, ask?: number) {
   listeners.forEach(cb => { try { cb(quote); } catch {} });
 }
 
-function connectBinance() {
+async function pollGold() {
   try {
-    binanceWs = new WebSocket(`${BINANCE_WS}/xauusdt@ticker`);
-    binanceWs.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        const bid = parseFloat(d.b) || parseFloat(d.c);
-        const ask = parseFloat(d.a) || (bid + bid * 0.0002);
-        if (bid > 0) { updatePrice('XAU/USD', bid, ask); updateGoldCandle(bid); }
-      } catch {}
-    };
-    binanceWs.onclose = () => { setTimeout(connectBinance, 5000); };
-    binanceWs.onerror = () => {};
+    const res = await fetch(GOLD_API);
+    if (!res.ok) return;
+    const d = await res.json();
+    const price = parseFloat(d.price);
+    if (price > 0) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
   } catch {}
 }
 
@@ -206,14 +201,15 @@ export async function seedHistoricalData(symbol: string): Promise<OHLC[]> {
 
 export function startMarketData() {
   if (pollInterval) return;
-  connectBinance();
+  pollGold();
   pollFrankfurter();
   pollInterval = setInterval(pollFrankfurter, 30000);
+  goldInterval = setInterval(pollGold, 12000);
   setTimeout(() => pollFrankfurter(), 3000);
 }
 
 export function stopMarketData() {
-  if (binanceWs) { binanceWs.close(); binanceWs = null; }
+  if (goldInterval) { clearInterval(goldInterval); goldInterval = null; }
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 }
 

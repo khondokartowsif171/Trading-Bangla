@@ -262,3 +262,76 @@ export function generateSignal(
     expiresAt: now + 4 * 60 * 60 * 1000,
   };
 }
+
+// ─── Continuous LIVE read — never null (except warm-up). Majority-vote direction. ──
+// Used for real-time streaming so the dashboard always shows a fresh read,
+// not just the rare 3/3-confluence trade alerts from generateSignal().
+export function generateLiveSignal(
+  m15Candles: Candle[],
+  h1Candles: Candle[],
+  h4Candles: Candle[],
+  symbol: string
+): Signal | null {
+  if (m15Candles.length < 50 || h1Candles.length < 50 || h4Candles.length < 30) {
+    return null;
+  }
+
+  const m15 = analyzeTimeframe(m15Candles, 'M15');
+  const h1  = analyzeTimeframe(h1Candles,  'H1');
+  const h4  = analyzeTimeframe(h4Candles,  'H4');
+
+  const directions = [m15.direction, h1.direction, h4.direction];
+  const buyCount  = directions.filter(d => d === 'BUY').length;
+  const sellCount = directions.filter(d => d === 'SELL').length;
+
+  let direction: SignalDirection = 'NEUTRAL';
+  if (buyCount > sellCount) direction = 'BUY';
+  else if (sellCount > buyCount) direction = 'SELL';
+
+  const entry  = m15.indicators.currentPrice;
+  const atr    = h4.indicators.atr || m15.indicators.atr || entry * 0.001;
+  const isGold = symbol.toUpperCase().includes('XAU') || symbol.toUpperCase().includes('GC');
+  const dp     = isGold ? 2 : 5;
+  const slDist = atr * (isGold ? 2.0 : 1.5);
+  const tpDist = slDist * 2.5;
+
+  const stopLoss = direction === 'SELL'
+    ? parseFloat((entry + slDist).toFixed(dp))
+    : parseFloat((entry - slDist).toFixed(dp));
+  const takeProfit = direction === 'SELL'
+    ? parseFloat((entry - tpDist).toFixed(dp))
+    : parseFloat((entry + tpDist).toFixed(dp));
+
+  // Confidence: weighted timeframe score scaled by agreement level (1..3)
+  const agree    = Math.max(buyCount, sellCount);
+  const weighted = h4.score * 0.5 + h1.score * 0.3 + m15.score * 0.2;
+  let confidence = Math.round(weighted * (0.6 + agree * 0.13));
+  if (direction === 'NEUTRAL') confidence = Math.min(confidence, 48);
+  confidence = Math.max(35, Math.min(confidence, 90));
+
+  const reasons = [
+    `${agree}/3 timeframes ${direction === 'NEUTRAL' ? 'mixed' : direction}`,
+    ...h4.reasons.slice(0, 2),
+    ...h1.reasons.slice(0, 1),
+  ];
+
+  const now = Date.now();
+  return {
+    id: `${symbol}_LIVE_${now}`,
+    symbol,
+    direction,
+    entry: parseFloat(entry.toFixed(dp)),
+    stopLoss,
+    takeProfit,
+    confidence,
+    riskReward: 2.5,
+    reasons,
+    timeframes: directions
+      .map((d, i) => ['M15', 'H1', 'H4'][i])
+      .filter((_, i) => [m15, h1, h4][i].direction === direction),
+    indicators: m15.indicators,
+    srLevels: [],
+    timestamp: now,
+    expiresAt: now + 60 * 60 * 1000,
+  };
+}

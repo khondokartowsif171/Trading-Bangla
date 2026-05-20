@@ -50,6 +50,7 @@ export function useSignalBot() {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [latestSignal, setLatestSignal] = useState<BotSignal | null>(null);
   const [signalHistory, setSignalHistory] = useState<BotSignal[]>([]);
+  const [liveSignals, setLiveSignals] = useState<Record<string, BotSignal>>({});
   const [botStats, setBotStats] = useState<BotStats | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -59,8 +60,22 @@ export function useSignalBot() {
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    setStatus('connecting');
-    const ws = new WebSocket(BOT_WS_URL);
+    // Mixed-content guard: browsers block ws:// on HTTPS pages
+    if (window.location.protocol === 'https:' && BOT_WS_URL.startsWith('ws://')) {
+      console.warn('[SignalBot] ws:// blocked on HTTPS. Configure VITE_SIGNAL_BOT_URL=wss://...');
+      setStatus('error');
+      return;
+    }
+
+    let ws: WebSocket;
+    try {
+      setStatus('connecting');
+      ws = new WebSocket(BOT_WS_URL);
+    } catch (err) {
+      console.error('[SignalBot] WebSocket creation failed:', err);
+      setStatus('error');
+      return;
+    }
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -76,6 +91,10 @@ export function useSignalBot() {
           const signal: BotSignal = msg.data;
           setLatestSignal(signal);
           setSignalHistory(prev => [signal, ...prev].slice(0, 50));
+        } else if (msg.type === 'live' && msg.data?.symbol) {
+          // Continuous real-time read per symbol (BUY/SELL/NEUTRAL)
+          const live: BotSignal = msg.data;
+          setLiveSignals(prev => ({ ...prev, [live.symbol]: live }));
         } else if (msg.type === 'stats') {
           setBotStats(msg.data);
         }
@@ -105,5 +124,5 @@ export function useSignalBot() {
     };
   }, [connect]);
 
-  return { status, latestSignal, signalHistory, botStats };
+  return { status, latestSignal, signalHistory, liveSignals, botStats };
 }

@@ -42,6 +42,7 @@ import AuraCrytox from '@/pages/AuraCrytox';
 import EaDashboard from '@/pages/EaDashboard';
 import UserProfile from '@/pages/UserProfile';
 import AdminDashboard from '@/pages/AdminDashboard';
+import CrmDashboard from '@/pages/CrmDashboard';
 import BlogPage from '@/pages/BlogPage';
 import BlogPost from '@/pages/BlogPost';
 
@@ -49,19 +50,21 @@ function AppContent() {
   const { darkMode } = useApp();
   const location = useLocation();
   const isHome = location.pathname === '/';
-  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard';
+  const isCrmSubdomain = window.location.hostname === 'crm.tradingbangla.com';
+  const isCrm = location.pathname === '/crm' || isCrmSubdomain;
+  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard' || isCrm;
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
       darkMode ? 'bg-gray-950' : 'bg-gray-50'
     }`}>
-      <Navbar />
+      {!isCrm && <Navbar />}
       {!isTrade && <LivePriceTicker />}
       {/* Main content with mobile bottom padding */}
       <div className={isHome ? '' : 'pb-20 md:pb-0'}>
         <ErrorBoundary>
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={isCrmSubdomain ? <Navigate to="/crm" replace /> : <Home />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/trade" element={<Navigate to="/ea-dashboard" replace />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
@@ -71,21 +74,26 @@ function AppContent() {
             <Route path="/forex" element={<ForexMT5 />} />
             <Route path="/crytox" element={<AuraCrytox />} />
             <Route path="/tb-admin-2026" element={<AdminDashboard />} />
+            <Route path="/crm" element={<CrmDashboard />} />
             <Route path="/admin" element={<Navigate to="/" replace />} />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
           </Routes>
         </ErrorBoundary>
       </div>
-      {/* Desktop floating widgets */}
-      <div className="hidden md:block">
-        <AIChat />
-        <WhatsAppFloat />
-      </div>
-      {/* Mobile bottom navigation + floating buttons */}
-      <div className="md:hidden">
-        <MobileBottomNav />
-      </div>
+      {/* Desktop floating widgets — hidden on CRM */}
+      {!isCrm && (
+        <div className="hidden md:block">
+          <AIChat />
+          <WhatsAppFloat />
+        </div>
+      )}
+      {/* Mobile bottom navigation — hidden on CRM */}
+      {!isCrm && (
+        <div className="md:hidden">
+          <MobileBottomNav />
+        </div>
+      )}
     </div>
   );
 }

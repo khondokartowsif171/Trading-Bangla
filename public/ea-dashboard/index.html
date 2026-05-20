@@ -563,6 +563,204 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
 
   </div><!-- /page-dashboard -->
 
+  <!-- PAGE: OPEN TRADES -->
+  <div id="page-trades" style="display:none">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">💹 Open Positions</div>
+        <div style="font-family:var(--font-mono);font-size:.62rem;color:var(--text2)">Magic: <span style="color:var(--accent)">202400</span> · Live from MT5</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="trade-table">
+          <thead>
+            <tr><th>TICKET</th><th>SYMBOL</th><th>TYPE</th><th>LOT</th><th>OPEN PRICE</th><th>CURRENT</th><th>SL</th><th>TP</th><th>SWAP</th><th>P&L</th><th>TIME</th></tr>
+          </thead>
+          <tbody id="tradesPageBody">
+            <tr><td colspan="11" style="text-align:center;color:var(--text2);padding:30px;font-family:var(--font-mono)">No open positions · Connect MT5 for live data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px">
+      <div class="metric"><div class="metric-icon">💹</div><div class="metric-label">Open Trades</div><div class="metric-value" id="tp-open">0</div></div>
+      <div class="metric"><div class="metric-icon">💰</div><div class="metric-label">Floating P&L</div><div class="metric-value" id="tp-pnl">$0.00</div></div>
+      <div class="metric"><div class="metric-icon">📈</div><div class="metric-label">Used Margin</div><div class="metric-value" id="tp-margin">$0.00</div></div>
+      <div class="metric"><div class="metric-icon">🛡️</div><div class="metric-label">Free Margin</div><div class="metric-value" id="tp-free">$10,000.00</div></div>
+    </div>
+  </div><!-- /page-trades -->
+
+  <!-- PAGE: HISTORY -->
+  <div id="page-history" style="display:none">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📋 Trade History</div>
+        <div style="font-family:var(--font-mono);font-size:.62rem;color:var(--text2)" id="histCount">0 closed trades</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="trade-table">
+          <thead>
+            <tr><th>#</th><th>SYMBOL</th><th>TYPE</th><th>LOT</th><th>OPEN</th><th>CLOSE</th><th>OPEN PRICE</th><th>CLOSE PRICE</th><th>SWAP</th><th>P&L</th></tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="10" style="text-align:center;color:var(--text2);padding:30px;font-family:var(--font-mono)">No closed trades yet · History will appear here</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px">
+      <div class="card"><div class="card-header"><div class="card-title">📊 Summary</div></div>
+        <div class="card-body">
+          <div class="mini-metric"><span class="mini-key">Total Closed</span><span class="mini-val" id="hTotal">0</span></div>
+          <div class="mini-metric"><span class="mini-key">Wins</span><span class="mini-val pos" id="hWins">0</span></div>
+          <div class="mini-metric"><span class="mini-key">Losses</span><span class="mini-val neg" id="hLosses">0</span></div>
+          <div class="mini-metric"><span class="mini-key">Win Rate</span><span class="mini-val" id="hWinRate">0%</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">💰 Profit</div></div>
+        <div class="card-body">
+          <div class="mini-metric"><span class="mini-key">Gross Profit</span><span class="mini-val pos" id="hGross">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Gross Loss</span><span class="mini-val neg" id="hLoss">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Net Profit</span><span class="mini-val" id="hNet">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Profit Factor</span><span class="mini-val" id="hFactor">--</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><div class="card-title">⏱️ Averages</div></div>
+        <div class="card-body">
+          <div class="mini-metric"><span class="mini-key">Avg Win</span><span class="mini-val pos" id="hAvgW">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Avg Loss</span><span class="mini-val neg" id="hAvgL">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Best Trade</span><span class="mini-val pos" id="hBest">$0.00</span></div>
+          <div class="mini-metric"><span class="mini-key">Worst Trade</span><span class="mini-val neg" id="hWorst">$0.00</span></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-history -->
+
+  <!-- PAGE: SIGNALS -->
+  <div id="page-signals" style="display:none">
+    <div style="display:grid;grid-template-columns:340px 1fr;gap:14px">
+      <!-- Latest Signal -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">📡 Latest Signal</div><div id="sigPageStatus" style="font-family:var(--font-mono);font-size:.58rem;color:var(--text2)">WAITING</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="signal-box wait" id="sigPageBox">
+            <div class="signal-icon" id="sigPageIcon">◆</div>
+            <div class="signal-label" id="sigPageLabel" style="color:var(--text2)">SCANNING</div>
+            <div class="signal-note" id="sigPageNote">Awaiting signal data...</div>
+            <div class="signal-conf"><div class="signal-conf-fill" id="sigPageConf" style="width:0%;background:var(--accent)"></div></div>
+          </div>
+          <div id="sigPageDetails" style="font-family:var(--font-mono);font-size:.68rem;color:var(--text2);line-height:2">
+            <div class="mini-metric"><span class="mini-key">Symbol</span><span class="mini-val" id="sigPSym">--</span></div>
+            <div class="mini-metric"><span class="mini-key">Entry</span><span class="mini-val" id="sigPEntry">--</span></div>
+            <div class="mini-metric"><span class="mini-key">Stop Loss</span><span class="mini-val neg" id="sigPSL">--</span></div>
+            <div class="mini-metric"><span class="mini-key">Take Profit</span><span class="mini-val pos" id="sigPTP">--</span></div>
+            <div class="mini-metric"><span class="mini-key">R:R Ratio</span><span class="mini-val" id="sigPRR">--</span></div>
+            <div class="mini-metric"><span class="mini-key">Confidence</span><span class="mini-val" id="sigPConf">--%</span></div>
+          </div>
+          <div id="sigPageReasons" style="font-family:var(--font-mono);font-size:.62rem;color:var(--text2);border-top:1px solid var(--border);padding-top:10px;line-height:1.8"></div>
+        </div>
+      </div>
+      <!-- Signal History -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">📜 Signal History</div><div id="sigHistCount" style="font-family:var(--font-mono);font-size:.58rem;color:var(--text2)">0 signals</div></div>
+        <div style="overflow-x:auto">
+          <table class="trade-table">
+            <thead><tr><th>TIME</th><th>SYMBOL</th><th>DIRECTION</th><th>ENTRY</th><th>SL</th><th>TP</th><th>CONFIDENCE</th><th>REASONS</th></tr></thead>
+            <tbody id="sigHistBody">
+              <tr><td colspan="8" style="text-align:center;color:var(--text2);padding:30px;font-family:var(--font-mono)">No signals yet · Signals will appear here when received</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-signals -->
+
+  <!-- PAGE: SETTINGS -->
+  <div id="page-settings" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">🎯 Risk Management</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+          <div><div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:6px">RISK PER TRADE (%)</div>
+            <input type="number" value="1.0" min="0.1" max="5" step="0.1" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:.8rem;outline:none">
+          </div>
+          <div><div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:6px">MAX OPEN TRADES</div>
+            <input type="number" value="3" min="1" max="10" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:.8rem;outline:none">
+          </div>
+          <div><div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:6px">MAGIC NUMBER</div>
+            <input type="number" value="202400" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:.8rem;outline:none">
+          </div>
+          <div><div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:6px">MIN SIGNAL CONFIDENCE (%)</div>
+            <input type="number" value="75" min="50" max="95" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:.8rem;outline:none">
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">⚙️ EA Features</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:4px">
+          <div class="toggle-row"><span class="tg-label">Auto Lot Sizing</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Trailing Stop Loss</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Session Filter (London+NY)</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">R:R Mode (1:2 minimum)</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Auto Trade on Signal</span><label class="toggle"><input type="checkbox"><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">News Filter (avoid high impact)</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Push Notifications</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Sound Alerts</span><label class="toggle"><input type="checkbox"><span class="tg-slider"></span></label></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">📊 Chart Settings</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:4px">
+          <div class="toggle-row"><span class="tg-label">Show EMA Lines</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Show Signal Markers</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Dark Theme</span><label class="toggle"><input type="checkbox" checked><span class="tg-slider"></span></label></div>
+          <div class="toggle-row"><span class="tg-label">Compact View</span><label class="toggle"><input type="checkbox"><span class="tg-slider"></span></label></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">ℹ️ About EA</div></div>
+        <div class="card-body" style="font-family:var(--font-mono);font-size:.72rem;color:var(--text2);line-height:2">
+          <div class="mini-metric"><span class="mini-key">EA Name</span><span class="mini-val" style="color:var(--accent)">Trading Bangla AI</span></div>
+          <div class="mini-metric"><span class="mini-key">Version</span><span class="mini-val">v2.0.0</span></div>
+          <div class="mini-metric"><span class="mini-key">Signal Bot</span><span class="mini-val">signals.tradingbangla.com</span></div>
+          <div class="mini-metric"><span class="mini-key">Strategy</span><span class="mini-val">EMA Cross + RSI + MACD</span></div>
+          <div class="mini-metric"><span class="mini-key">Pairs</span><span class="mini-val">XAU/USD · EUR/USD · GBP/USD</span></div>
+          <div class="mini-metric"><span class="mini-key">Built by</span><span class="mini-val" style="color:var(--accent2)">Aura Agentic AI</span></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-settings -->
+
+  <!-- PAGE: MT5 CONNECT -->
+  <div id="page-connect" style="display:none">
+    <div style="display:grid;grid-template-columns:380px 1fr;gap:14px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">🔌 MT5 Connection</div><div id="connPage" style="font-family:var(--font-mono);font-size:.58rem"></div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:6px">SIGNAL BOT HOST</div>
+            <input id="wsHostPage" value="signals.tradingbangla.com" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:8px 10px;color:var(--text);font-family:var(--font-mono);font-size:.75rem;outline:none">
+          </div>
+          <button onclick="connectFromPage()" id="connectPageBtn" style="background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:2px;padding:11px;color:#000;font-family:var(--font-hud);font-size:.65rem;font-weight:700;letter-spacing:3px;cursor:pointer;text-transform:uppercase">CONNECT MT5</button>
+          <div id="connPageStatus" style="font-family:var(--font-mono);font-size:.7rem;color:var(--text2);text-align:center;padding:8px;border:1px solid var(--border);border-radius:2px">● DISCONNECTED — Demo mode active</div>
+          <div style="font-family:var(--font-mono);font-size:.62rem;color:var(--text2);line-height:1.8;border-top:1px solid var(--border);padding-top:10px">
+            <div style="color:var(--accent);margin-bottom:6px;letter-spacing:1px">HOW TO CONNECT:</div>
+            ১. MT5 এ EA চালু করুন<br>
+            ২. VPS-এ signal-bot running আছে কিনা চেক করুন<br>
+            ৩. উপরে Host সঠিক আছে কিনা দেখুন<br>
+            ৪. CONNECT MT5 বাটনে ক্লিক করুন<br>
+            <div style="margin-top:8px;color:var(--warn)">⚠ Cloudflare Tunnel → wss://signals.tradingbangla.com</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">🔔 Connection Log</div></div>
+        <div id="connLog" style="padding:12px;font-family:var(--font-mono);font-size:.65rem;color:var(--text2);max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+          <div style="color:var(--text2)">-- Connection log will appear here --</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-connect -->
+
 </div><!-- /content -->
 
 <!-- ══ RIGHT PANEL ══ -->
@@ -614,15 +812,15 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
     <div style="display:flex;flex-direction:column;gap:8px">
       <div>
         <div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:4px">HOST</div>
-        <input id="wsHost" value="195.35.7.154" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
+        <input id="wsHost" value="signals.tradingbangla.com" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
       </div>
-      <div>
+      <div style="display:none">
         <div style="font-family:var(--font-mono);font-size:.6rem;letter-spacing:1px;color:var(--text2);margin-bottom:4px">PORT</div>
-        <input id="wsPort" value="9001" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
+        <input id="wsPort" value="" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:2px;padding:7px 10px;color:var(--text);font-family:var(--font-mono);font-size:.72rem;outline:none">
       </div>
-      <button onclick="toggleConnect()" style="background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:2px;padding:9px;color:#000;font-family:var(--font-hud);font-size:.62rem;font-weight:700;letter-spacing:3px;cursor:pointer;text-transform:uppercase;transition:all .2s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">CONNECT MT5</button>
-      <div style="font-family:var(--font-mono);font-size:.58rem;color:var(--text2);letter-spacing:.5px;line-height:1.6">
-        MT5 এ EA চালু থাকলে auto-connect হবে।<br>এখন Demo data দেখাচ্ছে।
+      <button onclick="toggleConnect()" id="rpConnectBtn" style="background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:2px;padding:9px;color:#000;font-family:var(--font-hud);font-size:.62rem;font-weight:700;letter-spacing:3px;cursor:pointer;text-transform:uppercase;transition:all .2s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">CONNECT MT5</button>
+      <div id="rpConnectMsg" style="font-family:var(--font-mono);font-size:.62rem;letter-spacing:.5px;line-height:1.8;padding:7px 10px;border-radius:2px;border:1px solid var(--border);color:var(--text2)">
+        ● DISCONNECTED — Demo mode active
       </div>
     </div>
   </div>
@@ -656,12 +854,16 @@ const state = {
   },
   candles:[],
   openTrades:[],
+  trades:[],
+  closedTrades:[],
+  signalHistory:[],
   stats:{wins:0,losses:0,grossProfit:0,grossLoss:0},
   todayProfit:0,
   rsi:50, fastEMA:0, slowEMA:0,
   signal:0,
   signalConf:85,
   signalReasons:'',
+  currentPage:'dashboard',
   ws:null, connected:false
 };
 
@@ -694,12 +896,19 @@ function toggleEA(){
 }
 
 // ══════════════════════════════════════════════
-//  CLOCK
+//  CLOCK — always Bangladesh time (UTC+6) for every viewer
 // ══════════════════════════════════════════════
+function bdTime(){
+  return new Date().toLocaleTimeString('en-GB',{timeZone:'Asia/Dhaka',hour12:false});
+}
+function bdTimeFromMs(ms){
+  return new Date(ms).toLocaleTimeString('en-GB',{timeZone:'Asia/Dhaka',hour12:false,hour:'2-digit',minute:'2-digit'});
+}
 function updateClock(){
-  const t=new Date().toLocaleTimeString('en-GB');
-  document.getElementById('clock').textContent=t;
-  document.getElementById('footerTime').textContent=t;
+  const t=bdTime();
+  document.getElementById('clock').textContent=t+' BDT';
+  const ft=document.getElementById('footerTime');
+  if(ft) ft.textContent=t+' BDT';
 }
 setInterval(updateClock,1000);
 updateClock();
@@ -707,9 +916,127 @@ updateClock();
 // ══════════════════════════════════════════════
 //  NAV
 // ══════════════════════════════════════════════
+const PAGES = ['dashboard','trades','history','signals','settings','connect'];
 function setNav(el,page){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   el.classList.add('active');
+  PAGES.forEach(p=>{
+    const el=document.getElementById('page-'+p);
+    if(el) el.style.display = p===page ? '' : 'none';
+  });
+  state.currentPage = page;
+  if(page==='trades') renderTradesPage();
+  if(page==='history') renderHistoryPage();
+  if(page==='signals') renderSignalsPage();
+}
+
+function renderTradesPage(){
+  const body=document.getElementById('tradesPageBody');
+  if(!body) return;
+  const dashBody=document.getElementById('openTradesBody');
+  if(dashBody) body.innerHTML=dashBody.innerHTML;
+  document.getElementById('tp-open').textContent=state.trades.length;
+  const pnl=state.trades.reduce((s,t)=>s+(t.pnl||0),0);
+  document.getElementById('tp-pnl').textContent='$'+pnl.toFixed(2);
+}
+
+function renderHistoryPage(){
+  const body=document.getElementById('historyBody');
+  if(!body) return;
+  if(!state.closedTrades||state.closedTrades.length===0){
+    body.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:30px;font-family:var(--font-mono)">No closed trades yet</td></tr>';
+    return;
+  }
+  body.innerHTML=state.closedTrades.map((t,i)=>`
+    <tr>
+      <td>${i+1}</td><td>${t.symbol}</td>
+      <td style="color:${t.type==='BUY'?'var(--buy)':'var(--sell)'}">${t.type}</td>
+      <td>${t.lot}</td><td>${bdTimeFromMs(t.openTime)}</td>
+      <td>${bdTimeFromMs(t.closeTime||Date.now())}</td>
+      <td>${t.openPrice}</td><td>${t.closePrice||'--'}</td>
+      <td>$${(t.swap||0).toFixed(2)}</td>
+      <td style="color:${(t.pnl||0)>=0?'var(--buy)':'var(--sell)'}">${(t.pnl||0)>=0?'+':''}$${(t.pnl||0).toFixed(2)}</td>
+    </tr>`).join('');
+  document.getElementById('hTotal').textContent=state.closedTrades.length;
+  const wins=state.closedTrades.filter(t=>(t.pnl||0)>0);
+  const losses=state.closedTrades.filter(t=>(t.pnl||0)<0);
+  document.getElementById('hWins').textContent=wins.length;
+  document.getElementById('hLosses').textContent=losses.length;
+  document.getElementById('hWinRate').textContent=state.closedTrades.length?Math.round(wins.length/state.closedTrades.length*100)+'%':'0%';
+  const gp=wins.reduce((s,t)=>s+(t.pnl||0),0);
+  const gl=Math.abs(losses.reduce((s,t)=>s+(t.pnl||0),0));
+  document.getElementById('hGross').textContent='$'+gp.toFixed(2);
+  document.getElementById('hLoss').textContent='-$'+gl.toFixed(2);
+  document.getElementById('hNet').textContent='$'+(gp-gl).toFixed(2);
+  document.getElementById('hFactor').textContent=gl>0?(gp/gl).toFixed(2):'∞';
+  document.getElementById('hAvgW').textContent=wins.length?'$'+(gp/wins.length).toFixed(2):'$0.00';
+  document.getElementById('hAvgL').textContent=losses.length?'-$'+(gl/losses.length).toFixed(2):'$0.00';
+  const pnls=(state.closedTrades||[]).map(t=>t.pnl||0);
+  document.getElementById('hBest').textContent='$'+Math.max(0,...pnls).toFixed(2);
+  document.getElementById('hWorst').textContent='-$'+Math.abs(Math.min(0,...pnls)).toFixed(2);
+}
+
+function renderSignalsPage(){
+  if(!state.signalHistory||state.signalHistory.length===0) return;
+  const latest=state.signalHistory[0];
+  updateSignalPageLatest(latest);
+  const body=document.getElementById('sigHistBody');
+  if(!body) return;
+  document.getElementById('sigHistCount').textContent=state.signalHistory.length+' signals';
+  body.innerHTML=state.signalHistory.map(s=>`
+    <tr>
+      <td>${bdTimeFromMs(s.timestamp||Date.now())}</td>
+      <td>${s.symbol||'XAUUSD'}</td>
+      <td style="color:${s.direction==='BUY'?'var(--buy)':'var(--sell)'};font-weight:700">${s.direction}</td>
+      <td>${s.entry||'--'}</td>
+      <td>${s.stopLoss||'--'}</td>
+      <td>${s.takeProfit||'--'}</td>
+      <td><div style="display:flex;align-items:center;gap:6px"><div style="width:60px;height:5px;background:var(--border);border-radius:2px"><div style="width:${s.confidence||0}%;height:100%;background:var(--accent);border-radius:2px"></div></div><span>${s.confidence||0}%</span></div></td>
+      <td style="font-size:.6rem;color:var(--text2)">${(s.reasons||[]).join(' · ')||'--'}</td>
+    </tr>`).join('');
+}
+
+function updateSignalPageLatest(sig){
+  if(!sig) return;
+  const isBuy=sig.direction==='BUY';
+  const box=document.getElementById('sigPageBox');
+  if(box){box.className='signal-box '+(isBuy?'buy':'sell');}
+  const icon=document.getElementById('sigPageIcon');
+  if(icon) icon.textContent=isBuy?'▲':'▼';
+  const lbl=document.getElementById('sigPageLabel');
+  if(lbl){lbl.textContent=sig.direction;lbl.style.color=isBuy?'var(--buy)':'var(--sell)';}
+  const note=document.getElementById('sigPageNote');
+  if(note) note.textContent='Confidence: '+(sig.confidence||0)+'%';
+  const conf=document.getElementById('sigPageConf');
+  if(conf){conf.style.width=(sig.confidence||0)+'%';conf.style.background=isBuy?'var(--buy)':'var(--sell)';}
+  const set=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
+  set('sigPSym',sig.symbol||'XAUUSD');
+  set('sigPEntry',sig.entry||'--');
+  set('sigPSL',sig.stopLoss||'--');
+  set('sigPTP',sig.takeProfit||'--');
+  set('sigPRR',sig.riskReward?'1:'+sig.riskReward:'--');
+  set('sigPConf',(sig.confidence||0)+'%');
+  const reasons=document.getElementById('sigPageReasons');
+  if(reasons&&sig.reasons) reasons.innerHTML=(sig.reasons||[]).map(r=>'✓ '+r).join('<br>');
+}
+
+function connectFromPage(){
+  const host=document.getElementById('wsHostPage').value.trim();
+  document.getElementById('wsHost').value=host;
+  document.getElementById('wsPort').value='';
+  addConnLog('info','Connecting to '+host+'...');
+  toggleConnect();
+}
+
+function addConnLog(type,msg){
+  const log=document.getElementById('connLog');
+  if(!log) return;
+  const t=bdTime();
+  const color=type==='buy'?'var(--buy)':type==='sell'?'var(--sell)':'var(--text2)';
+  const div=document.createElement('div');
+  div.style.cssText='color:'+color+';font-size:.65rem';
+  div.textContent='['+t+'] '+msg;
+  log.prepend(div);
 }
 
 // ══════════════════════════════════════════════
@@ -719,8 +1046,7 @@ function setSymbol(el,sym){
   document.querySelectorAll('#symTabs .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   state.symbol=sym;
-  generateCandles();
-  updateChart();
+  fetchRealCandles(sym);
 }
 
 // ══════════════════════════════════════════════
@@ -811,7 +1137,7 @@ function updateChart(){
   const chgEl=document.getElementById('pChange');
   chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2)+'%';
   chgEl.className=chg>=0?'pnl-pos':'pnl-neg';
-  document.getElementById('chartUpdate').textContent=new Date().toLocaleTimeString('en-GB');
+  document.getElementById('chartUpdate').textContent=bdTime();
   renderCandles();
 }
 
@@ -819,31 +1145,108 @@ function updateChart(){
 //  DEMO SIMULATION
 // ══════════════════════════════════════════════
 let tickCount=0;
+// ══════════════════════════════════════════════
+//  REAL PRICES — Binance WebSocket + Frankfurter
+// ══════════════════════════════════════════════
+const prevBids = {};
+function updateRealPrice(sym, bid, ask){
+  const spread=ask-bid;
+  const prev=prevBids[sym]||bid;
+  const change=prev>0?((bid-prev)/prev*100):0;
+  prevBids[sym]=bid;
+  if(state.prices[sym]){
+    state.prices[sym].bid=bid;
+    state.prices[sym].ask=ask||bid+(spread||state.prices[sym].spread*0.0001);
+    state.prices[sym].change=change;
+  }
+  // update market watch sidebar
+  const syms=['EURUSD','GBPUSD','XAUUSD','BTCUSD','USDJPY'];
+  const i=syms.indexOf(sym);
+  if(i>=0){
+    const el=document.getElementById('s'+(i+1)+'p');
+    const ce=document.getElementById('s'+(i+1)+'c');
+    const p=state.prices[sym];
+    if(el&&p) el.textContent=bid.toFixed(p.digits);
+    if(ce){
+      ce.textContent=(change>=0?'+':'')+change.toFixed(2)+'%';
+      ce.className='sym-chg '+(change>=0?'up':'dn');
+    }
+  }
+  if(sym===state.symbol){
+    const p=state.prices[sym];
+    if(p){
+      const askP=bid+(p.spread*(sym.includes('JPY')?0.01:0.00001));
+      const sp=((askP-bid)/(sym.includes('JPY')?0.01:0.0001)).toFixed(1);
+      setVal('pBid',bid.toFixed(p.digits));
+      setVal('pAsk',askP.toFixed(p.digits));
+      setVal('pSpread',sp+' pips');
+      const ch=document.getElementById('pChange');
+      if(ch){ch.textContent=(change>=0?'+':'')+change.toFixed(2)+'%';ch.style.color=change>=0?'var(--buy)':'var(--sell)';}
+      setVal('chartUpdate',bdTime());
+    }
+  }
+}
+
+let binancePriceWs=null;
+function startBinancePrices(){
+  try{
+    const streams='btcusdt@ticker/xauusdt@ticker';
+    binancePriceWs=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
+    binancePriceWs.onmessage=(e)=>{
+      const d=JSON.parse(e.data);
+      const t=d.data;
+      if(!t) return;
+      const bid=parseFloat(t.b||t.c);
+      const ask=parseFloat(t.a||t.c);
+      if(d.stream.includes('btcusdt')) updateRealPrice('BTCUSD',bid,ask);
+      if(d.stream.includes('xauusdt')) updateRealPrice('XAUUSD',bid,ask);
+    };
+    binancePriceWs.onclose=()=>setTimeout(startBinancePrices,5000);
+    binancePriceWs.onerror=()=>{};
+  }catch(e){}
+}
+
+async function fetchForexPrices(){
+  try{
+    const r=await fetch('https://api.frankfurter.dev/v2/latest?base=USD&symbols=EUR,GBP,JPY');
+    const d=await r.json();
+    if(d.rates){
+      const eurUsd=1/d.rates.EUR;
+      const gbpUsd=1/d.rates.GBP;
+      const usdJpy=d.rates.JPY;
+      updateRealPrice('EURUSD',parseFloat(eurUsd.toFixed(5)),parseFloat((eurUsd+0.00012).toFixed(5)));
+      updateRealPrice('GBPUSD',parseFloat(gbpUsd.toFixed(5)),parseFloat((gbpUsd+0.00015).toFixed(5)));
+      updateRealPrice('USDJPY',parseFloat(usdJpy.toFixed(3)),parseFloat((usdJpy+0.013).toFixed(3)));
+    }
+  }catch(e){}
+}
+
+async function fetchRealCandles(symbol){
+  const binanceMap={'BTCUSD':'BTCUSDT','XAUUSD':'XAUUSDT'};
+  const bs=binanceMap[symbol];
+  if(!bs){generateCandles();updateChart();return;}
+  try{
+    const r=await fetch('https://api.binance.com/api/v3/klines?symbol='+bs+'&interval=1h&limit=60');
+    const data=await r.json();
+    if(!Array.isArray(data)||data.length===0){generateCandles();updateChart();return;}
+    state.candles=data.map(k=>({
+      open:parseFloat(k[1]),high:parseFloat(k[2]),
+      low:parseFloat(k[3]),close:parseFloat(k[4]),
+      time:new Date(k[0]).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})
+    }));
+    const last=state.candles[state.candles.length-1];
+    if(last&&state.prices[symbol]){
+      state.prices[symbol].bid=last.close;
+      updateRealPrice(symbol,last.close,last.close*(symbol==='XAUUSD'?1.0001:1.00005));
+    }
+    updateChart();
+  }catch(e){generateCandles();updateChart();}
+}
+
 function simulateTick(){
   tickCount++;
 
-  // Update prices
-  Object.keys(state.prices).forEach(sym=>{
-    const p=state.prices[sym];
-    const drift=(Math.random()-0.499)*p.bid*0.0001;
-    p.bid=Math.max(p.bid*0.99,p.bid+drift);
-  });
-
-  // Update market watch sidebar
-  const syms=['EURUSD','GBPUSD','XAUUSD','BTCUSD','USDJPY'];
-  syms.forEach((s,i)=>{
-    const p=state.prices[s];
-    const el=document.getElementById('s'+(i+1)+'p');
-    const ce=document.getElementById('s'+(i+1)+'c');
-    if(el) el.textContent=p.bid.toFixed(p.digits);
-    if(ce){
-      const r=(Math.random()-0.48)*0.5;
-      ce.textContent=(r>=0?'+':'')+r.toFixed(2)+'%';
-      ce.className='sym-chg '+(r>=0?'up':'dn');
-    }
-  });
-
-  // RSI simulation
+  // RSI simulation (relative to real price)
   state.rsi=Math.max(10,Math.min(90,state.rsi+(Math.random()-0.48)*4));
   const p=state.prices[state.symbol];
   state.fastEMA=p.bid*(1+(Math.random()-0.5)*0.001);
@@ -1055,7 +1458,7 @@ function addNotif(type,msg,cls='info'){
   const list=document.getElementById('notifList');
   const div=document.createElement('div');
   div.className='notif '+cls;
-  div.innerHTML=`<div class="notif-time">${new Date().toLocaleTimeString('en-GB')}</div><div class="notif-msg">${msg}</div>`;
+  div.innerHTML=`<div class="notif-time">${bdTime()}</div><div class="notif-msg">${msg}</div>`;
   list.insertBefore(div,list.firstChild);
   if(list.children.length>8) list.removeChild(list.lastChild);
 }
@@ -1071,15 +1474,26 @@ function toggleConnect(){
     document.getElementById('connStatus').textContent='● DEMO MODE';
     addNotif('info','Disconnected from MT5','info');
   } else {
-    const host=document.getElementById('wsHost').value;
-    const port=document.getElementById('wsPort').value;
-    addNotif('info','Connecting to ws://'+host+':'+port+'...','info');
+    const host=document.getElementById('wsHost').value.trim();
+    const port=document.getElementById('wsPort').value.trim();
+    const proto=window.location.protocol==='https:'?'wss://':'ws://';
+    const wsUrl=port?proto+host+':'+port:proto+host;
+    addNotif('info','Connecting to '+wsUrl+'...','info');
     try{
-      state.ws=new WebSocket('ws://'+host+':'+port);
+      state.ws=new WebSocket(wsUrl);
       state.ws.onopen=()=>{
         state.connected=true;
         document.getElementById('connStatus').className='conn-status live';
         document.getElementById('connStatus').textContent='● LIVE CONNECTED';
+        const ps=document.getElementById('connPageStatus');
+        if(ps){ps.style.color='var(--buy)';ps.textContent='● LIVE CONNECTED — Signal bot active';}
+        const pb=document.getElementById('connectPageBtn');
+        if(pb) pb.textContent='DISCONNECT';
+        const rb=document.getElementById('rpConnectBtn');
+        if(rb) rb.textContent='DISCONNECT';
+        const rm=document.getElementById('rpConnectMsg');
+        if(rm){rm.style.color='var(--buy)';rm.style.borderColor='var(--buy)';rm.textContent='● LIVE CONNECTED — signals.tradingbangla.com';}
+        addConnLog('buy','Connected to MT5 EA!');
         addNotif('buy','Connected to MT5 EA!','buy');
       };
       state.ws.onmessage=(e)=>{
@@ -1087,11 +1501,14 @@ function toggleConnect(){
           const msg=JSON.parse(e.data);
           if(msg.type==='signal'){
             const sig=msg.data;
+            sig.timestamp=sig.timestamp||Date.now();
             // Map to existing state.signal: 1=BUY, -1=SELL, 0=NEUTRAL
             state.signal=sig.direction==='BUY'?1:sig.direction==='SELL'?-1:0;
             // Update signal confidence
             state.signalConf=sig.confidence;
             state.signalReasons=sig.reasons?sig.reasons.join(' • '):'';
+            // Store in history (max 50)
+            state.signalHistory=[sig,...state.signalHistory].slice(0,50);
             // Update indicators if available
             if(sig.indicators){
               state.rsi=sig.indicators.rsi;
@@ -1099,6 +1516,10 @@ function toggleConnect(){
               state.slowEMA=sig.indicators.ema50;
             }
             updateDashboard();
+            // Update signals page if open
+            if(state.currentPage==='signals') renderSignalsPage();
+            updateSignalPageLatest(sig);
+            addConnLog('buy','Signal: '+sig.direction+' @ '+sig.entry+' | Conf: '+sig.confidence+'%');
             addNotif(sig.direction.toLowerCase(),`${sig.direction} XAU/USD @ ${sig.entry} | SL: ${sig.stopLoss} | TP: ${sig.takeProfit} | Conf: ${sig.confidence}%`,sig.direction==='BUY'?'buy':'sell');
           } else if(msg.type==='stats'){
             const stats=msg.data;
@@ -1113,19 +1534,36 @@ function toggleConnect(){
         state.connected=false;
         document.getElementById('connStatus').className='conn-status demo';
         document.getElementById('connStatus').textContent='● DEMO MODE';
+        const ps=document.getElementById('connPageStatus');
+        if(ps){ps.style.color='var(--text2)';ps.textContent='● DISCONNECTED — Demo mode active';}
+        const pb=document.getElementById('connectPageBtn');
+        if(pb) pb.textContent='CONNECT MT5';
+        const rb=document.getElementById('rpConnectBtn');
+        if(rb) rb.textContent='CONNECT MT5';
+        const rm=document.getElementById('rpConnectMsg');
+        if(rm){rm.style.color='var(--text2)';rm.style.borderColor='var(--border)';rm.textContent='● DISCONNECTED — Demo mode active';}
+        addConnLog('info','Connection closed. Demo mode.');
         addNotif('info','MT5 connection closed','info');
       };
       state.ws.onerror=()=>{
+        addConnLog('sell','WebSocket error — check if signal bot is running');
         addNotif('sell','Cannot connect. Running in Demo mode.','sell');
       };
-    }catch(e){addNotif('sell','WebSocket error. Demo mode.','sell')}
+    }catch(e){addConnLog('sell','WebSocket error: '+e.message);addNotif('sell','WebSocket error. Demo mode.','sell')}
   }
 }
 
 // ══════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════
-updateChart();
+// Start real price feeds
+startBinancePrices();
+fetchForexPrices();
+setInterval(fetchForexPrices, 60000); // refresh forex every 60s
+
+// Load real candles for default symbol (XAUUSD)
+fetchRealCandles(state.symbol);
+
 updateDashboard();
 setInterval(simulateTick, 1500);
 setInterval(()=>{if(state.candles.length>0){
@@ -1137,9 +1575,9 @@ setInterval(()=>{if(state.candles.length>0){
   renderCandles();
 }},800);
 
-// Auto-connect to signal bot on VPS
-document.getElementById('wsHost').value = '195.35.7.154';
-document.getElementById('wsPort').value = '9001';
+// Auto-connect to signal bot via Cloudflare Tunnel (WSS)
+document.getElementById('wsHost').value = 'signals.tradingbangla.com';
+document.getElementById('wsPort').value = '';
 setTimeout(() => {
   if (!state.connected) toggleConnect();
 }, 1500);

@@ -1,20 +1,19 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
-import { useForexRates, useForexHistorical } from '@/hooks/useForexData';
+import { useForexRates } from '@/hooks/useForexData';
 import { FOREX_PAIRS } from '@/services/forexApi';
 import { analyzeSignal, AgenticSignal } from '@/services/agenticSignalEngine';
 import { startMarketData, stopMarketData, onPriceUpdate, onCandleUpdate, seedHistoricalData, getPrice, getCandles, RealTimeQuote, OHLC } from '@/services/marketDataService';
-import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
-import { openTrade, updateTradePrices, onTradeUpdate } from '@/services/paperTradingService';
+import { openTrade, updateTradePrices } from '@/services/paperTradingService';
 import { addNotif } from './NotificationsPanel';
-import AgenticSignalPanel from './AgenticSignalPanel';
+import AdvancedChart from './TradingView/AdvancedChart';
+import SignalCenter from './SignalCenter';
 import AccountMetricsCards from './AccountMetricsCards';
 import OpenTradesTable from './OpenTradesTable';
 import PerformanceStats from './PerformanceStats';
 import EaConfigPanel from './EaConfigPanel';
 import NotificationsPanel from './NotificationsPanel';
-import { Search, TrendingUp, TrendingDown, RefreshCw, Activity, Zap, LayoutDashboard } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Search, TrendingUp, RefreshCw, Activity, LayoutDashboard } from 'lucide-react';
 
 function MarketWatch({ rates, loading, onSelect, selected }: {
   rates: any; loading: boolean; onSelect: (s: string) => void; selected: string;
@@ -73,48 +72,26 @@ function MarketWatch({ rates, loading, onSelect, selected }: {
   );
 }
 
-function MT5Chart({ symbol, realtimeCandles }: { symbol: string; realtimeCandles: OHLC[] }) {
+// Quick-access symbols above the chart — gold first (primary), then majors
+const QUICK_SYMBOLS = ['XAU/USD', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF', 'BTC/USD', 'ETH/USD'];
+
+function ChartPanel({ symbol, onSelect }: { symbol: string; onSelect: (s: string) => void }) {
   const { darkMode } = useApp();
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const { candles: histCandles } = useForexHistorical(symbol, 60);
-  const candles = realtimeCandles.length > 0 ? realtimeCandles : histCandles;
-
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-    try {
-      const chart = createChart(chartContainerRef.current, {
-        layout: { background: { color: 'transparent' }, textColor: darkMode ? '#9ca3af' : '#6b7280' },
-        grid: { vertLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }, horzLines: { color: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } },
-        width: chartContainerRef.current.clientWidth, height: 360,
-        crosshair: { mode: 0, vertLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' }, horzLine: { color: '#6366f1', labelBackgroundColor: '#6366f1' } },
-        timeScale: { borderColor: darkMode ? '#374151' : '#e5e7eb', timeVisible: false, tickMarkFormatter: (time: any) => { const d = new Date(time * 1000); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } },
-        rightPriceScale: { borderColor: darkMode ? '#374151' : '#e5e7eb' },
-      });
-      const series = chart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444', borderUpColor: '#22c55e', borderDownColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444' } as any);
-      chartRef.current = chart; candleSeriesRef.current = series;
-      const handleResize = () => { if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth }); };
-      window.addEventListener('resize', handleResize);
-      return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
-    } catch {}
-  }, [darkMode]);
-
-  useEffect(() => {
-    if (!candleSeriesRef.current || !candles.length) return;
-    try { candleSeriesRef.current.setData(candles.map(c => ({ time: Math.floor(c.time), open: c.open, high: c.high, low: c.low, close: c.close }))); chartRef.current?.timeScale().fitContent(); } catch {}
-  }, [candles]);
-
   return (
     <div className={`relative rounded-xl border overflow-hidden ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
-      <div className={`px-3 py-1.5 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-        <div className="flex items-center gap-2">
-          <span className={`font-bold text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>{symbol}</span>
-          <span className={`text-[9px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{candles.length}C</span>
-        </div>
-        {symbol === 'XAU/USD' && <span className="flex items-center gap-1 text-[9px] text-green-400"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />WS</span>}
+      <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b overflow-x-auto no-scrollbar ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+        {QUICK_SYMBOLS.map(s => (
+          <button key={s} onClick={() => onSelect(s)}
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap transition-all ${
+              s === symbol
+                ? 'bg-indigo-500 text-white'
+                : (darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100')
+            }`}>
+            {s === 'XAU/USD' ? '🥇 ' : ''}{s}
+          </button>
+        ))}
       </div>
-      <div ref={chartContainerRef} className="w-full" />
+      <AdvancedChart symbol={symbol} height={460} />
     </div>
   );
 }
@@ -123,7 +100,7 @@ export default function MT5TerminalPanel() {
   const { darkMode, lang } = useApp();
   const isBn = lang === 'bn';
   const { rates, loading } = useForexRates();
-  const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD');
+  const [selectedSymbol, setSelectedSymbol] = useState('XAU/USD');
   const selectedRate = rates[selectedSymbol];
   const [realtimeCandles, setRealtimeCandles] = useState<Record<string, OHLC[]>>({});
   const [livePrice, setLivePrice] = useState<RealTimeQuote | null>(null);
@@ -182,7 +159,11 @@ export default function MT5TerminalPanel() {
       </div>
 
       {view === 'dashboard' ? (
-        <div className="grid xl:grid-cols-[1fr_340px] gap-3">
+        <>
+        {/* Live Signal Center — XAU/USD primary + major forex (friend's core request) */}
+        <SignalCenter selectedSymbol={selectedSymbol} onSelectSymbol={setSelectedSymbol} />
+
+        <div className="grid xl:grid-cols-[1fr_340px] gap-3 mt-3">
           {/* Main Panel */}
           <div className="space-y-3">
             {/* Live Price Bar */}
@@ -196,7 +177,7 @@ export default function MT5TerminalPanel() {
                     { label: isBn ? 'উচ্চ' : 'High', v: displayRate.high.toFixed(displayRate.high > 100 ? 2 : 5), c: 'text-green-400' },
                     { label: isBn ? 'নিচু' : 'Low', v: displayRate.low.toFixed(displayRate.low > 100 ? 2 : 5), c: 'text-red-400' },
                     { label: isBn ? 'পরিবর্তন' : 'Chg', v: `${displayRate.changePercent >= 0 ? '+' : ''}${displayRate.changePercent}%`, c: displayRate.change >= 0 ? 'text-green-400' : 'text-red-400' },
-                    { label: 'Data', v: selectedSymbol === 'XAU/USD' ? 'Binance' : 'ECB', c: 'text-cyan-400' },
+                    { label: 'Data', v: selectedSymbol === 'XAU/USD' ? 'Gold API' : 'ECB', c: 'text-cyan-400' },
                   ].map(s => (
                     <div key={s.label}>
                       <div className={`text-[8px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{s.label}</div>
@@ -207,15 +188,14 @@ export default function MT5TerminalPanel() {
               </div>
             )}
 
-            {/* Chart + Market Watch */}
+            {/* Chart (TradingView — full indicators/drawing tools) + Market Watch */}
             <div className="grid lg:grid-cols-[1fr_260px] gap-3">
-              <MT5Chart symbol={selectedSymbol} realtimeCandles={realtimeCandles[selectedSymbol] || []} />
+              <ChartPanel symbol={selectedSymbol} onSelect={setSelectedSymbol} />
               <MarketWatch rates={rates} loading={loading} onSelect={setSelectedSymbol} selected={selectedSymbol} />
             </div>
 
-            {/* Agentic Signal + Config + Notifs */}
-            <div className="grid md:grid-cols-3 gap-3">
-              <AgenticSignalPanel signal={agenticSignal} />
+            {/* Config + Notifs — shown here below xl (xl shows them in the sidebar) */}
+            <div className="grid md:grid-cols-2 gap-3 xl:hidden">
               <EaConfigPanel />
               <NotificationsPanel />
             </div>
@@ -254,6 +234,7 @@ export default function MT5TerminalPanel() {
             <NotificationsPanel />
           </div>
         </div>
+        </>
       ) : (
         /* Trades View */
         <div className="space-y-3">
