@@ -109,6 +109,57 @@ function calcBB(data: number[], period = 20): { upper: number[]; lower: number[]
   return { upper, lower };
 }
 
+// ─── SuperTrend (ATR-based) — smart trend indicator, clear BUY/SELL flips ───
+export interface SuperTrendResult { value: number; direction: 'BUY' | 'SELL'; flip: boolean; }
+
+export function calcSuperTrend(candles: OHLC[], period = 10, mult = 3): SuperTrendResult {
+  const n = candles.length;
+  if (n < period + 2) return { value: candles[n - 1]?.close ?? 0, direction: 'BUY', flip: false };
+
+  // Index-aligned ATR (Wilder smoothing)
+  const tr: number[] = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const hl = candles[i].high - candles[i].low;
+    const hc = Math.abs(candles[i].high - candles[i - 1].close);
+    const lc = Math.abs(candles[i].low - candles[i - 1].close);
+    tr[i] = Math.max(hl, hc, lc);
+  }
+  const atr: number[] = new Array(n).fill(NaN);
+  let seed = 0;
+  for (let i = 1; i <= period; i++) seed += tr[i];
+  atr[period] = seed / period;
+  for (let i = period + 1; i < n; i++) atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period;
+
+  const finalUpper: number[] = new Array(n).fill(NaN);
+  const finalLower: number[] = new Array(n).fill(NaN);
+  const st: number[] = new Array(n).fill(NaN);
+  const dir: ('BUY' | 'SELL')[] = new Array(n).fill('BUY');
+
+  for (let i = period; i < n; i++) {
+    const hl2 = (candles[i].high + candles[i].low) / 2;
+    const bu = hl2 + mult * atr[i];
+    const bl = hl2 - mult * atr[i];
+    const pFU = isNaN(finalUpper[i - 1]) ? bu : finalUpper[i - 1];
+    const pFL = isNaN(finalLower[i - 1]) ? bl : finalLower[i - 1];
+    finalUpper[i] = (bu < pFU || candles[i - 1].close > pFU) ? bu : pFU;
+    finalLower[i] = (bl > pFL || candles[i - 1].close < pFL) ? bl : pFL;
+    if (isNaN(st[i - 1])) { st[i] = finalUpper[i]; dir[i] = 'SELL'; continue; }
+    if (st[i - 1] === finalUpper[i - 1]) {
+      if (candles[i].close <= finalUpper[i]) { st[i] = finalUpper[i]; dir[i] = 'SELL'; }
+      else { st[i] = finalLower[i]; dir[i] = 'BUY'; }
+    } else {
+      if (candles[i].close >= finalLower[i]) { st[i] = finalLower[i]; dir[i] = 'BUY'; }
+      else { st[i] = finalUpper[i]; dir[i] = 'SELL'; }
+    }
+  }
+  const last = n - 1;
+  return {
+    value: isFinite(st[last]) ? st[last] : candles[last].close,
+    direction: dir[last],
+    flip: dir[last] !== dir[last - 1],
+  };
+}
+
 // ─── Agent 1: Trend Agent ───
 function trendAgent(closes: number[], ema9: number[], ema21: number[], sma20: number[], sma50: number[]): AgentVote {
   const last = closes.length - 1;

@@ -254,13 +254,32 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
     };
   }, [getThemeColors]);
 
+  const disposeCharts = useCallback(() => {
+    try { mainChartRef.current?.remove(); } catch {}
+    try { rsiChartRef.current?.remove(); } catch {}
+    try { macdChartRef.current?.remove(); } catch {}
+    mainChartRef.current = null;
+    rsiChartRef.current = null;
+    macdChartRef.current = null;
+    markersRef.current = null;
+    candleSeriesRef.current = null;
+    volSeriesRef.current = null;
+    ema20Ref.current = null;
+    ema50Ref.current = null;
+    ema200Ref.current = null;
+    bbUpperRef.current = null;
+    bbLowerRef.current = null;
+    rsiSeriesRef.current = null;
+    macdLineRef.current = null;
+    macdSignalRef.current = null;
+    macdHistRef.current = null;
+  }, []);
+
   const initCharts = useCallback(() => {
     try {
     if (!mainRef.current) return;
 
-    mainChartRef.current?.remove();
-    rsiChartRef.current?.remove();
-    macdChartRef.current?.remove();
+    disposeCharts();
 
     const mainChart = createChart(mainRef.current, buildChartOptions(360));
     mainChartRef.current = mainChart;
@@ -317,66 +336,72 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
   }, [buildChartOptions]);
 
   const populateData = useCallback((data: OHLCV[]) => {
-    const closes = data.map(d => d.close);
+    // Guard: charts may have been disposed during an async data update
+    if (!candleSeriesRef.current || data.length === 0) return;
+    try {
+      const closes = data.map(d => d.close);
 
-    candleSeriesRef.current?.setData(data.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+      candleSeriesRef.current.setData(data.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
 
-    const ema20 = calcEMA(closes, 20);
-    const ema50 = calcEMA(closes, 50);
-    const ema200 = calcEMA(closes, 200);
-    const bb = calcBB(closes);
-    const rsiVals = calcRSI(closes);
-    const { macd, signal, hist } = calcMACD(closes);
+      const ema20 = calcEMA(closes, 20);
+      const ema50 = calcEMA(closes, 50);
+      const ema200 = calcEMA(closes, 200);
+      const bb = calcBB(closes);
+      const rsiVals = calcRSI(closes);
+      const { macd, signal, hist } = calcMACD(closes);
 
-    const mapNonNull = (vals: (number | null)[]) =>
-      data.filter((_, i) => vals[i] != null).map(d => ({ time: d.time, value: vals[data.indexOf(d)]! }));
+      // O(n) — map by index i (old code used data.indexOf(d): O(n²) + wrong on dup candles)
+      const mapNonNull = (vals: (number | null)[]) =>
+        data.reduce<{ time: UTCTimestamp; value: number }[]>((acc, d, i) => {
+          if (vals[i] != null) acc.push({ time: d.time, value: vals[i]! });
+          return acc;
+        }, []);
 
-    ema20Ref.current?.setData(mapNonNull(ema20));
-    ema50Ref.current?.setData(mapNonNull(ema50));
-    ema200Ref.current?.setData(mapNonNull(ema200));
-    bbUpperRef.current?.setData(mapNonNull(bb.upper));
-    bbLowerRef.current?.setData(mapNonNull(bb.lower));
+      ema20Ref.current?.setData(mapNonNull(ema20));
+      ema50Ref.current?.setData(mapNonNull(ema50));
+      ema200Ref.current?.setData(mapNonNull(ema200));
+      bbUpperRef.current?.setData(mapNonNull(bb.upper));
+      bbLowerRef.current?.setData(mapNonNull(bb.lower));
 
-    volSeriesRef.current?.setData(data.map(d => ({
-      time: d.time,
-      value: d.volume,
-      color: d.close >= d.open ? '#22c55e44' : '#ef444444',
-    })));
+      volSeriesRef.current?.setData(data.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#22c55e44' : '#ef444444',
+      })));
 
-    const rsiMapped = data
-      .filter((_, i) => rsiVals[i] != null)
-      .map(d => {
-        const i = data.indexOf(d);
-        const v = rsiVals[i]!;
-        return { time: d.time, value: v, color: v > 70 ? '#ef4444' : v < 30 ? '#22c55e' : '#a78bfa' };
-      });
-    rsiSeriesRef.current?.setData(rsiMapped.map(({ time, value }) => ({ time, value })));
+      rsiSeriesRef.current?.setData(
+        data.reduce<{ time: UTCTimestamp; value: number }[]>((acc, d, i) => {
+          if (rsiVals[i] != null) acc.push({ time: d.time, value: rsiVals[i]! });
+          return acc;
+        }, [])
+      );
 
-    macdHistRef.current?.setData(
-      data.filter((_, i) => hist[i] != null).map(d => {
-        const i = data.indexOf(d);
-        const v = hist[i]!;
-        return { time: d.time, value: v, color: v >= 0 ? '#22c55e88' : '#ef444488' };
-      })
-    );
-    macdLineRef.current?.setData(mapNonNull(macd));
-    macdSignalRef.current?.setData(mapNonNull(signal));
+      macdHistRef.current?.setData(
+        data.reduce<{ time: UTCTimestamp; value: number; color: string }[]>((acc, d, i) => {
+          if (hist[i] != null) acc.push({ time: d.time, value: hist[i]!, color: hist[i]! >= 0 ? '#22c55e88' : '#ef444488' });
+          return acc;
+        }, [])
+      );
+      macdLineRef.current?.setData(mapNonNull(macd));
+      macdSignalRef.current?.setData(mapNonNull(signal));
 
-    const atrVal = calcATR(data);
-    setAtr(atrVal);
+      const atrVal = calcATR(data);
+      setAtr(atrVal);
 
-    mainChartRef.current?.timeScale().fitContent();
-    macdChartRef.current?.timeScale().fitContent();
+      mainChartRef.current?.timeScale().fitContent();
+      macdChartRef.current?.timeScale().fitContent();
+    } catch {
+      // chart/series disposed mid-update — safe to ignore
+    }
   }, []);
 
   useEffect(() => {
+    // Init once on mount. Theme changes go through applyOptions (below); data through populateData.
+    // Re-initialising on every theme change destroyed the charts without re-populating → blank chart.
     initCharts();
-    return () => {
-      mainChartRef.current?.remove();
-      rsiChartRef.current?.remove();
-      macdChartRef.current?.remove();
-    };
-  }, [initCharts]);
+    return () => disposeCharts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Use real data if available, otherwise fall back to generated
@@ -442,10 +467,14 @@ export default function ProChart({ darkMode, latestSignal, botStatus }: ProChart
       size: 1,
     };
 
-    if (markersRef.current) {
-      markersRef.current.setMarkers([marker]);
-    } else {
-      markersRef.current = createSeriesMarkers(candleSeriesRef.current, [marker]);
+    try {
+      if (markersRef.current) {
+        markersRef.current.setMarkers([marker]);
+      } else {
+        markersRef.current = createSeriesMarkers(candleSeriesRef.current, [marker]);
+      }
+    } catch {
+      // series disposed — ignore
     }
   }, [latestSignal, candles]);
 

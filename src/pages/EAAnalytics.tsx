@@ -53,10 +53,10 @@ function SignalCard({ signal }: { signal: SignalResult }) {
       className={`rounded-xl p-4 border text-center ${bought ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
       <p className="font-bold text-sm">{signal.symbol}</p>
       <p className={`text-lg font-black mt-1 ${bought ? 'text-green-400' : 'text-red-400'}`}>{signal.signal}</p>
-      <p className={`text-xs mt-1 font-mono font-bold`}>${signal.entry.toFixed(2)}</p>
+      <p className={`text-xs mt-1 font-mono font-bold`}>${(signal.entry ?? 0).toFixed(2)}</p>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-        <div><span className="text-gray-500">SL</span><br /><span className="text-red-400 font-mono">{signal.stopLoss.toFixed(2)}</span></div>
-        <div><span className="text-gray-500">TP</span><br /><span className="text-green-400 font-mono">{signal.takeProfit.toFixed(2)}</span></div>
+        <div><span className="text-gray-500">SL</span><br /><span className="text-red-400 font-mono">{(signal.stopLoss ?? 0).toFixed(2)}</span></div>
+        <div><span className="text-gray-500">TP</span><br /><span className="text-green-400 font-mono">{(signal.takeProfit ?? 0).toFixed(2)}</span></div>
       </div>
       <div className="mt-2">
         <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
@@ -312,6 +312,23 @@ export default function EAAnalytics() {
             ].map((badge, i) => (
               <span key={i} className={`px-3 py-1 rounded-full text-xs font-bold text-white ${badge.cls}`}>{badge.text}</span>
             ))}
+          </div>
+        </motion.div>
+
+        {/* ── Aura AI MT5 Signal Scanner ── */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+            <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">Aura AI · Live MT5 Signal Scanner</span>
+            <span className="ml-auto text-[10px] text-gray-500">XAU/USD · EUR/USD · GBP/USD · USD/JPY</span>
+          </div>
+          <div className="rounded-2xl overflow-hidden border border-purple-500/20 shadow-2xl shadow-purple-900/20">
+            <iframe
+              src="/mt5-signals/index.html"
+              title="Aura AI MT5 Signals"
+              style={{ width: '100%', height: '640px', border: 0, display: 'block' }}
+              allow="notifications"
+            />
           </div>
         </motion.div>
 

@@ -1,0 +1,506 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import {
+  PairConfig,
+  Position,
+  TradeHistory,
+  AccountState,
+} from '../types';
+import {
+  PlaySquare,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  XCircle,
+  Briefcase,
+  History,
+  AlertCircle,
+  Percent,
+  ChevronRight,
+} from 'lucide-react';
+
+interface TradePanelProps {
+  pair: PairConfig;
+  currentPrice: number;
+  positions: Position[];
+  history: TradeHistory[];
+  account: AccountState;
+  onOpenPosition: (type: 'BUY' | 'SELL', lots: number, leverage: number, slPrice?: number, tpPrice?: number) => void;
+  onClosePosition: (id: string) => void;
+  onResetAccount: () => void;
+  onClose?: () => void;
+  currentWidth?: number;
+  onWidthChange?: (newWidth: number) => void;
+}
+
+export default function TradePanel({
+  pair,
+  currentPrice,
+  positions,
+  history,
+  account,
+  onOpenPosition,
+  onClosePosition,
+  onResetAccount,
+  onClose,
+  currentWidth,
+  onWidthChange,
+}: TradePanelProps) {
+  const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
+  const [lots, setLots] = useState<number>(1.0);
+  const [leverage, setLeverage] = useState<number>(200); // 1:200
+  
+  // Take Profit / Stop Loss toggles & entries
+  const [useSL, setUseSL] = useState(false);
+  const [slValue, setSlValue] = useState<string>('');
+  
+  const [useTP, setUseTP] = useState(false);
+  const [tpValue, setTpValue] = useState<string>('');
+
+  const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
+
+  // Multiplier helper for PnL calculation
+  const getMultiplier = (symbolName: string) => {
+    if (symbolName.includes('JPY')) return 1000;
+    if (symbolName.includes('Gold') || symbolName.includes('XAU')) return 100;
+    if (symbolName.includes('BTC') || symbolName.includes('Bitcoin')) return 1;
+    return 100000; // standard Forex pair
+  };
+
+  const getPositionPnL = (pos: Position) => {
+    const mult = getMultiplier(pos.sym);
+    const priceDiff = pos.type === 'BUY' ? (currentPrice - pos.entryPrice) : (pos.entryPrice - currentPrice);
+    return priceDiff * mult * pos.lots;
+  };
+
+  const marginLevelPercent = account.usedMargin > 0 ? (account.equity / account.usedMargin) * 100 : 0;
+
+  // Quick preset SL and TP rates
+  const setPresets = (type: 'conservative' | 'aggressive') => {
+    const slPips = type === 'conservative' ? 20 : 50;
+    const tpPips = type === 'conservative' ? 40 : 120;
+    
+    // 1 pip value in raw price context
+    const pipVal = pair.pip;
+    
+    if (tradeType === 'BUY') {
+      setSlValue((currentPrice - slPips * pipVal).toFixed(pair.dec));
+      setTpValue((currentPrice + tpPips * pipVal).toFixed(pair.dec));
+    } else {
+      setSlValue((currentPrice + slPips * pipVal).toFixed(pair.dec));
+      setTpValue((currentPrice - tpPips * pipVal).toFixed(pair.dec));
+    }
+    setUseSL(true);
+    setUseTP(true);
+  };
+
+  const handlePlaceOrder = () => {
+    const slPrice = useSL && slValue ? parseFloat(slValue) : undefined;
+    const tpPrice = useTP && tpValue ? parseFloat(tpValue) : undefined;
+
+    // Validate size
+    if (lots <= 0 || isNaN(lots)) return;
+
+    onOpenPosition(tradeType, lots, leverage, slPrice, tpPrice);
+
+    // Reset inputs
+    setUseSL(false);
+    setUseTP(false);
+    setSlValue('');
+    setTpValue('');
+  };
+
+  return (
+    <div className="w-full h-full bg-[#0d1117] flex flex-col select-none border-l border-[#1e273d]">
+      
+      {/* TRADE SIMULATOR HEADER BAR */}
+      <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-black/30 shrink-0">
+        <span className="font-extrabold text-[11px] font-sans text-white/50 uppercase tracking-widest flex items-center gap-1.5">
+          <Briefcase className="w-3.5 h-3.5 text-[#ffc107]" /> ট্রেড ও ট্রানজ্যাকশন সিমুলেশন
+        </span>
+        <div className="flex items-center space-x-2">
+          {currentWidth && onWidthChange && (
+            <div className="flex items-center space-x-0.5 bg-black/40 border border-white/10 rounded overflow-hidden">
+              <button
+                onClick={() => onWidthChange(Math.max(180, currentWidth - 30))}
+                className="w-5 h-5 flex items-center justify-center text-[10px] text-gray-400 hover:text-white hover:bg-white/5 font-bold transition-colors"
+                title="সাইজ ছোট করুন (Make narrower)"
+              >
+                ➖
+              </button>
+              <span className="text-[8.5px] text-white/40 font-mono px-1">
+                {currentWidth}
+              </span>
+              <button
+                onClick={() => onWidthChange(Math.min(600, currentWidth + 30))}
+                className="w-5 h-5 flex items-center justify-center text-[10px] text-gray-400 hover:text-white hover:bg-white/5 font-bold transition-colors"
+                title="সাইজ বড় করুন (Make wider)"
+              >
+                ➕
+              </button>
+            </div>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition"
+              title="মিনিমাইজ করুন (Collapse Trade Panel)"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 1. BROKERAGE BALANCES STATUS TABLE */}
+      <div className="bg-[#0e1424] p-3 border-b border-[#1b253b] grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-gray-500 font-sans text-[9px] uppercase tracking-wider block">সিমুলেশন ব্যালেন্স (USD)</span>
+          <span className="font-mono text-[13.5px] font-bold text-gray-100">${account.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div>
+          <span className="text-gray-500 font-sans text-[9px] uppercase tracking-wider block font-bold">মার্কেট ইকুইটি (Equity)</span>
+          <span className="font-mono text-[13.5px] font-bold text-[#00d4ff]">${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="col-span-2 h-px bg-gray-800 my-1" />
+        <div>
+          <span className="text-gray-500 font-sans text-[9px] uppercase tracking-wider block">ইউজড মার্জিন (Margin)</span>
+          <span className="font-mono text-xs font-semibold text-gray-300">${account.usedMargin.toFixed(2)}</span>
+        </div>
+        <div>
+          <span className="text-gray-500 font-sans text-[9px] uppercase tracking-wider block">ফ্রি মার্জিন (Free Margin)</span>
+          <span className="font-mono text-xs font-semibold text-emerald-400">${account.freeMargin.toFixed(2)}</span>
+        </div>
+        <div className="col-span-2 flex items-center justify-between text-[10px] mt-1 bg-gray-950/40 p-1.5 rounded">
+          <span className="text-gray-500 font-bold uppercase tracking-wide flex items-center gap-1">
+            <Percent className="w-3 h-3" /> মার্জিন লেভেল %
+          </span>
+          <span className={`font-mono font-bold ${marginLevelPercent >= 100 || marginLevelPercent === 0 ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
+            {marginLevelPercent === 0 ? '0.00' : marginLevelPercent.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+
+      {/* 2. ORDER PLACEMENT PANEL */}
+      <div className="p-3.5 space-y-3 bg-[#111625]/50 border-b border-[#1e273d]">
+        <div className="flex bg-gray-900/60 p-1 rounded-lg">
+          <button
+            onClick={() => setTradeType('BUY')}
+            className={`flex-1 py-1.5 rounded text-xs font-bold font-sans uppercase tracking-wider flex items-center justify-center gap-1.5 transition ${
+              tradeType === 'BUY'
+                ? 'bg-[#00e676] text-black shadow'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" /> Buy / Long
+          </button>
+          <button
+            onClick={() => setTradeType('SELL')}
+            className={`flex-1 py-1.5 rounded text-xs font-bold font-sans uppercase tracking-wider flex items-center justify-center gap-1.5 transition ${
+              tradeType === 'SELL'
+                ? 'bg-[#ff3d57] text-white shadow'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <TrendingDown className="w-3.5 h-3.5" /> Sell / Short
+          </button>
+        </div>
+
+        {/* Lots input selection */}
+        <div>
+          <label className="text-gray-500 font-sans text-[9.5px] uppercase tracking-wider block font-bold mb-1.5">
+            ট্রেডিং লট সাইজ (Lots)
+          </label>
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setLots((prev) => Math.max(0.01, Number((prev - 0.1).toFixed(2))))}
+              className="px-2.5 py-1 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs rounded font-mono font-bold"
+            >
+              -0.10
+            </button>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              max="10.0"
+              value={lots}
+              onChange={(e) => setLots(Math.max(0.01, parseFloat(e.target.value) || 0.01))}
+              className="flex-1 bg-gray-950 border border-gray-800/80 rounded px-2 py-1 text-center font-mono text-xs font-bold text-gray-100 focus:outline-none focus:border-[#00d4ff]"
+            />
+            <button
+              onClick={() => setLots((prev) => Number((prev + 0.1).toFixed(2)))}
+              className="px-2.5 py-1 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs rounded font-mono font-bold"
+            >
+              +0.10
+            </button>
+          </div>
+          <div className="flex justify-between text-[9px] text-gray-500 mt-1 font-mono">
+            <span>মিনিমাম: 0.01 লট</span>
+            <span>১ লট = ১,০০,০০০ কন্ট্রাক্ট</span>
+          </div>
+        </div>
+
+        {/* Leverage config */}
+        <div>
+          <label className="text-gray-500 font-sans text-[9.5px] uppercase tracking-wider block font-bold mb-1.5">
+            লেভারেজ (Leverage Multipliers)
+          </label>
+          <div className="grid grid-cols-3 gap-1">
+            {[100, 200, 500].map((lev) => (
+              <button
+                key={lev}
+                onClick={() => setLeverage(lev)}
+                className={`py-1 text-xs rounded font-mono font-bold border transition ${
+                  leverage === lev
+                    ? 'bg-cyan-950/80 border-[#00d4ff]/40 text-[#00d4ff]'
+                    : 'bg-gray-800/40 border-transparent text-gray-400 hover:bg-[#1f273d]'
+                }`}
+              >
+                1:{lev}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Risk Stop Loss & Take Profit configs */}
+        <div className="space-y-2 border-t border-gray-800/40 pt-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[9.5px] text-gray-400 font-bold uppercase tracking-wider">রিস্ক প্রিকলশন (SL / TP)</span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setPresets('conservative')}
+                className="text-[8.5px] font-sans text-[#00e676] bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-800/20"
+              >
+                কন্সসারভেডিভ
+              </button>
+              <button
+                onClick={() => setPresets('aggressive')}
+                className="text-[8.5px] font-sans text-[#ff3d57] bg-red-950/40 px-1.5 py-0.5 rounded border border-red-800/20"
+              >
+                অ্যাগ্রেসিভ
+              </button>
+            </div>
+          </div>
+
+          {/* SL Check trigger */}
+          <div className="space-y-1.5">
+            <label className="flex items-center space-x-2 text-[10px] text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useSL}
+                onChange={() => setUseSL(!useSL)}
+                className="rounded text-indigo-505 bg-gray-950 border-gray-800"
+              />
+              <span className="font-bold">স্টপ লস ট্রিগার (Stop Loss - SL)</span>
+            </label>
+            {useSL && (
+              <input
+                type="number"
+                step={pair.pip}
+                placeholder={`যেমন: ${currentPrice.toFixed(pair.dec)}`}
+                value={slValue}
+                onChange={(e) => setSlValue(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#ff3d57]"
+              />
+            )}
+          </div>
+
+          {/* TP Check trigger */}
+          <div className="space-y-1.5">
+            <label className="flex items-center space-x-2 text-[10px] text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useTP}
+                onChange={() => setUseTP(!useTP)}
+                className="rounded text-indigo-505 bg-gray-950 border-gray-800"
+              />
+              <span className="font-bold">টেক প্রফিট টার্গেট (Take Profit - TP)</span>
+            </label>
+            {useTP && (
+              <input
+                type="number"
+                step={pair.pip}
+                placeholder={`যেমন: ${currentPrice.toFixed(pair.dec)}`}
+                value={tpValue}
+                onChange={(e) => setTpValue(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#00e676]"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* CORE SEND TRANSACTION TRIGGER BUTTON */}
+        <button
+          onClick={handlePlaceOrder}
+          className={`w-full py-2.5 rounded-lg text-xs font-bold font-sans uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow ${
+            tradeType === 'BUY'
+              ? 'bg-[#00e676] hover:bg-emerald-400 text-black'
+              : 'bg-[#ff3d57] hover:bg-red-400 text-white'
+          }`}
+        >
+          <PlaySquare className="w-4 h-4 shrink-0" />
+          <span>ডেমো ট্রেড সফল করুন ({tradeType})</span>
+        </button>
+      </div>
+
+      {/* 3. SIMULATED OPEN POSITIONS & RECENT CLOSED POSITIONS TRACE */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-[200px]">
+        
+        {/* Tab selector */}
+        <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-gray-950/20">
+          <button
+            onClick={() => setActiveTab('positions')}
+            className={`flex-1 py-2 border-b-2 flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'positions'
+                ? 'border-[#00d4ff] text-white bg-[#101625]'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5" /> ওপেন পজিশন ({positions.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex-1 py-2 border-b-2 flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'history'
+                ? 'border-[#26c6da] text-white bg-[#101625]'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" /> ক্লোজড হিস্ট্রি ({history.length})
+          </button>
+        </div>
+
+        {/* Tab view outcomes */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {activeTab === 'positions' ? (
+            positions.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <AlertCircle className="w-6 h-6 text-gray-600 mb-1.5" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest font-sans font-bold">কোনো ট্রেড ওপেন নেই!</span>
+                <span className="text-[9.5px] text-gray-600 max-w-[150px] mt-1 line-clamp-2">উপরের প্যানেল দিয়ে BUY অথবা SELL ডেমো ট্রেড করুন</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {positions.map((pos) => {
+                  const pnl = getPositionPnL(pos);
+                  const isProfit = pnl >= 0;
+
+                  return (
+                    <div
+                      key={pos.id}
+                      className="p-2.5 rounded-lg bg-[#141b2c] border border-[#1f2b48]/60 flex flex-col justify-between"
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <div className="flex items-center space-x-1.5">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                            pos.type === 'BUY' ? 'bg-emerald-950 text-[#00e676]' : 'bg-red-950 text-[#ff3d57]'
+                          }`}>
+                            {pos.type}
+                          </span>
+                          <span className="font-bold text-xs text-gray-200">{pos.sym}</span>
+                          <span className="font-mono text-[10px] text-gray-500">{pos.lots} lots</span>
+                        </div>
+                        <button
+                          onClick={() => onClosePosition(pos.id)}
+                          className="text-gray-500 hover:text-red-400 transition"
+                          title="ট্রেড ক্লোজ করুন"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-y-1 text-[10.5px] font-mono border-t border-gray-800/40 pt-1.5">
+                        <div className="flex justify-between pr-2 border-r border-gray-805">
+                          <span className="text-gray-500">এন্ট্রি:</span>
+                          <span className="text-gray-300 font-semibold">{pos.entryPrice.toFixed(pair.dec)}</span>
+                        </div>
+                        <div className="flex justify-between pl-2">
+                          <span className="text-gray-500">কারেন্ট:</span>
+                          <span className="text-[#00d4ff] font-semibold">{currentPrice.toFixed(pair.dec)}</span>
+                        </div>
+                        
+                        {pos.sl && (
+                          <div className="col-span-1 text-[9.5px]">
+                            <span className="text-red-500 mr-1.5 font-sans font-bold">SL:</span>
+                            <span className="text-gray-400">{pos.sl.toFixed(pair.dec)}</span>
+                          </div>
+                        )}
+                        {pos.tp && (
+                          <div className="col-span-1 text-[9.5px]">
+                            <span className="text-[#00e676] mr-1.5 font-sans font-bold">TP:</span>
+                            <span className="text-gray-400">{pos.tp.toFixed(pair.dec)}</span>
+                          </div>
+                        )}
+                        
+                        <div className="col-span-2 flex items-center justify-between text-xs mt-1.5 bg-gray-950/30 p-1.5 rounded">
+                          <span className="text-gray-400 text-[10px]">আইসি পিনাল (PnL):</span>
+                          <strong className={`font-bold ${isProfit ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
+                            ${isProfit ? '+' : ''}{pnl.toFixed(2)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            history.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <History className="w-6 h-6 text-gray-600 mb-1.5" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest font-sans font-bold text-center">ইতিহাস খালি!</span>
+                <span className="text-[9.5px] text-gray-600 mt-1 max-w-[150px]">কোনো সম্পন্ন লেনদেন পাওয়া যায়নি। পজিশন ক্লোজ করলে সেভ হবে।</span>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex justify-between px-1 mb-1.5">
+                  <span className="text-[9px] font-sans text-gray-500 font-bold uppercase tracking-wider">লেনদেনের রেকর্ড</span>
+                  <button
+                    onClick={onResetAccount}
+                    className="text-[9px] font-sans text-[#ff3d57] underline hover:no-underline"
+                  >
+                    হিস্ট্রি রিসেট করুন
+                  </button>
+                </div>
+                {history.map((hist) => {
+                  const isProfit = hist.pnl >= 0;
+                  return (
+                    <div
+                      key={hist.id}
+                      className="p-2 rounded bg-gray-950/40 border border-[#1f2b48]/35 flex justify-between items-center text-[10.5px] font-mono"
+                    >
+                      <div className="flex flex-col">
+                        <div className="flex items-center space-x-1">
+                          <span className={`text-[8.5px] p-0.5 rounded font-bold ${
+                            hist.type === 'BUY' ? 'bg-emerald-950/60 text-[#00e676]' : 'bg-red-950/60 text-[#ff3d57]'
+                          }`}>
+                            {hist.type}
+                          </span>
+                          <strong className="text-gray-300">{hist.sym}</strong>
+                          <span className="text-[9.5px] text-gray-500">{hist.lots} lot</span>
+                        </div>
+                        <span className="text-[8.5px] text-gray-500 mt-1">Status: {hist.status}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className={`font-bold ${isProfit ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
+                          ${isProfit ? '+' : ''}{hist.pnl.toFixed(2)}
+                        </span>
+                        <span className="text-[8px] text-gray-600 text-right mt-1">
+                          {new Date(hist.exitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

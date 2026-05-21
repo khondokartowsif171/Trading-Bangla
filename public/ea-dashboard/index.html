@@ -848,7 +848,7 @@ const state = {
   prices: {
     EURUSD:{bid:1.08432,spread:1.2,digits:5},
     GBPUSD:{bid:1.26871,spread:1.5,digits:5},
-    XAUUSD:{bid:2341.50,spread:3.0,digits:2},
+    XAUUSD:{bid:4545.00,spread:3.0,digits:2},
     BTCUSD:{bid:67842,spread:50,digits:2},
     USDJPY:{bid:151.432,spread:1.3,digits:3}
   },
@@ -1190,7 +1190,7 @@ function updateRealPrice(sym, bid, ask){
 let binancePriceWs=null;
 function startBinancePrices(){
   try{
-    const streams='btcusdt@ticker/xauusdt@ticker';
+    const streams='btcusdt@ticker';
     binancePriceWs=new WebSocket('wss://stream.binance.com:9443/stream?streams='+streams);
     binancePriceWs.onmessage=(e)=>{
       const d=JSON.parse(e.data);
@@ -1199,10 +1199,20 @@ function startBinancePrices(){
       const bid=parseFloat(t.b||t.c);
       const ask=parseFloat(t.a||t.c);
       if(d.stream.includes('btcusdt')) updateRealPrice('BTCUSD',bid,ask);
-      if(d.stream.includes('xauusdt')) updateRealPrice('XAUUSD',bid,ask);
     };
     binancePriceWs.onclose=()=>setTimeout(startBinancePrices,5000);
     binancePriceWs.onerror=()=>{};
+  }catch(e){}
+}
+
+// Real gold spot price — free, CORS, no key (matches TradingView ~$4,545). Binance xauusdt was wrong (~$2,330).
+async function fetchGoldPrice(){
+  try{
+    const r=await fetch('https://api.gold-api.com/price/XAU');
+    if(!r.ok) return;
+    const d=await r.json();
+    const p=parseFloat(d.price);
+    if(p>0) updateRealPrice('XAUUSD', p, parseFloat((p+0.30).toFixed(2)));
   }catch(e){}
 }
 
@@ -1222,7 +1232,9 @@ async function fetchForexPrices(){
 }
 
 async function fetchRealCandles(symbol){
-  const binanceMap={'BTCUSD':'BTCUSDT','XAUUSD':'XAUUSDT'};
+  // Gold: real spot price (gold-api.com) then candles anchored to it — Binance XAUUSDT is wrong (~$2,330)
+  if(symbol==='XAUUSD'){ await fetchGoldPrice(); generateCandles(); updateChart(); return; }
+  const binanceMap={'BTCUSD':'BTCUSDT'};
   const bs=binanceMap[symbol];
   if(!bs){generateCandles();updateChart();return;}
   try{
@@ -1521,6 +1533,22 @@ function toggleConnect(){
             updateSignalPageLatest(sig);
             addConnLog('buy','Signal: '+sig.direction+' @ '+sig.entry+' | Conf: '+sig.confidence+'%');
             addNotif(sig.direction.toLowerCase(),`${sig.direction} XAU/USD @ ${sig.entry} | SL: ${sig.stopLoss} | TP: ${sig.takeProfit} | Conf: ${sig.confidence}%`,sig.direction==='BUY'?'buy':'sell');
+          } else if(msg.type==='live'){
+            // Continuous real-time read from bot — real price + signal, no notification spam
+            const sig=msg.data;
+            const sym=(sig.symbol||'').replace('/','');  // 'XAU/USD' → 'XAUUSD'
+            if(sig.entry>0) updateRealPrice(sym, sig.entry, parseFloat((sig.entry*1.0001).toFixed(sym.includes('JPY')?3:2)));
+            if(sym===state.symbol){
+              state.signal=sig.direction==='BUY'?1:sig.direction==='SELL'?-1:0;
+              state.signalConf=sig.confidence;
+              state.signalReasons=sig.reasons?sig.reasons.join(' • '):'';
+              if(sig.indicators){
+                state.rsi=sig.indicators.rsi;
+                state.fastEMA=sig.indicators.ema9||sig.indicators.ema20;
+                state.slowEMA=sig.indicators.ema21||sig.indicators.ema50;
+              }
+              updateDashboard();
+            }
           } else if(msg.type==='stats'){
             const stats=msg.data;
             if(stats.currentBalance) state.balance=stats.currentBalance;
@@ -1558,6 +1586,8 @@ function toggleConnect(){
 // ══════════════════════════════════════════════
 // Start real price feeds
 startBinancePrices();
+fetchGoldPrice();
+setInterval(fetchGoldPrice, 12000); // real gold spot every 12s
 fetchForexPrices();
 setInterval(fetchForexPrices, 60000); // refresh forex every 60s
 

@@ -8,6 +8,7 @@ import { openTrade, updateTradePrices } from '@/services/paperTradingService';
 import { addNotif } from './NotificationsPanel';
 import AdvancedChart from './TradingView/AdvancedChart';
 import SignalCenter from './SignalCenter';
+import IndicatorTools from './IndicatorTools';
 import AccountMetricsCards from './AccountMetricsCards';
 import OpenTradesTable from './OpenTradesTable';
 import PerformanceStats from './PerformanceStats';
@@ -136,7 +137,7 @@ export default function MT5TerminalPanel() {
   }, [selectedSymbol]);
 
   const displayRate = livePrice || (selectedRate && {
-    bid: selectedRate.bid, ask: selectedRate.ask, spread: selectedRate.spread,
+    bid: selectedRate.bid ?? 0, ask: selectedRate.ask ?? 0, spread: selectedRate.spread ?? 0,
     change: selectedRate.change || 0, changePercent: selectedRate.changePercent || 0,
     high: selectedRate.high || 0, low: selectedRate.low || 0, volume: selectedRate.volume || '0',
   }) || null;
@@ -188,8 +189,9 @@ export default function MT5TerminalPanel() {
               </div>
             )}
 
-            {/* Chart (TradingView — full indicators/drawing tools) + Market Watch */}
-            <div className="grid lg:grid-cols-[1fr_260px] gap-3">
+            {/* Left: Indicator tools (user toggle) · Center: TradingView chart · Right: Market Watch */}
+            <div className="grid xl:grid-cols-[215px_1fr_250px] gap-3">
+              <IndicatorTools symbol={selectedSymbol} />
               <ChartPanel symbol={selectedSymbol} onSelect={setSelectedSymbol} />
               <MarketWatch rates={rates} loading={loading} onSelect={setSelectedSymbol} selected={selectedSymbol} />
             </div>

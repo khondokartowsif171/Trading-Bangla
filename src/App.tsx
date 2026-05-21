@@ -52,7 +52,7 @@ function AppContent() {
   const isHome = location.pathname === '/';
   const isCrmSubdomain = window.location.hostname === 'crm.tradingbangla.com';
   const isCrm = location.pathname === '/crm' || isCrmSubdomain;
-  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard' || isCrm;
+  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard' || location.pathname === '/forex' || isCrm;
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${

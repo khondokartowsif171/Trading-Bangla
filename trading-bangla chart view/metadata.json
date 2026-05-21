@@ -1,0 +1,6 @@
+{
+  "name": "Trading Bangla",
+  "description": "An advanced, high-fidelity real-time Forex charting platform featuring 100+ dynamic candles, multi-timeframe options, overlay indicators, Smart Money Concepts (SMC) visualizer, and an AI-powered Market Analyst assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

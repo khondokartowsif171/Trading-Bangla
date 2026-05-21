@@ -22,8 +22,9 @@ interface UISignal {
   source: 'BOT' | 'ENGINE';
 }
 
-function fmt(v: number) {
-  return v >= 100 ? v.toFixed(2) : v.toFixed(5);
+function fmt(v?: number | null) {
+  const n = typeof v === 'number' && isFinite(v) ? v : 0;
+  return n >= 100 ? n.toFixed(2) : n.toFixed(5);
 }
 
 function normalizeBot(b: BotSignal): UISignal {

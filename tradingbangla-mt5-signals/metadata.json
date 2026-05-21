@@ -1,0 +1,6 @@
+{
+  "name": "TradingBangla MT5 Signals",
+  "description": "Real-time MT5 Forex signal dashboard for tradingbangla.com",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
