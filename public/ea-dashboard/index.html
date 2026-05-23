@@ -350,27 +350,27 @@ input:checked+.tg-slider::before{transform:translateX(18px);background:var(--acc
     <div class="sym-label">Market Watch</div>
     <div class="sym-row">
       <span class="sym-name">EURUSD</span>
-      <span class="sym-price" id="s1p" style="color:var(--text)">1.08432</span>
+      <span class="sym-price" id="s1p" style="color:var(--text)">1.08650</span>
       <span class="sym-chg up" id="s1c">+0.02%</span>
     </div>
     <div class="sym-row">
       <span class="sym-name">GBPUSD</span>
-      <span class="sym-price" id="s2p" style="color:var(--text)">1.26871</span>
+      <span class="sym-price" id="s2p" style="color:var(--text)">1.27320</span>
       <span class="sym-chg dn" id="s2c">-0.05%</span>
     </div>
     <div class="sym-row">
       <span class="sym-name">XAUUSD</span>
-      <span class="sym-price" id="s3p" style="color:var(--text)">2341.50</span>
+      <span class="sym-price" id="s3p" style="color:var(--text)">4525.00</span>
       <span class="sym-chg up" id="s3c">+0.18%</span>
     </div>
     <div class="sym-row">
       <span class="sym-name">BTCUSD</span>
-      <span class="sym-price" id="s4p" style="color:var(--text)">67842</span>
+      <span class="sym-price" id="s4p" style="color:var(--text)">95000</span>
       <span class="sym-chg dn" id="s4c">-1.24%</span>
     </div>
     <div class="sym-row">
       <span class="sym-name">USDJPY</span>
-      <span class="sym-price" id="s5p" style="color:var(--text)">151.432</span>
+      <span class="sym-price" id="s5p" style="color:var(--text)">149.820</span>
       <span class="sym-chg up" id="s5c">+0.09%</span>
     </div>
   </div>
@@ -846,11 +846,11 @@ const state = {
   balance: 10000, equity: 10000,
   symbol: 'XAUUSD',
   prices: {
-    EURUSD:{bid:1.08432,spread:1.2,digits:5},
-    GBPUSD:{bid:1.26871,spread:1.5,digits:5},
-    XAUUSD:{bid:4545.00,spread:3.0,digits:2},
-    BTCUSD:{bid:67842,spread:50,digits:2},
-    USDJPY:{bid:151.432,spread:1.3,digits:3}
+    EURUSD:{bid:1.08650,spread:1.2,digits:5},
+    GBPUSD:{bid:1.27320,spread:1.5,digits:5},
+    XAUUSD:{bid:4525.00,spread:3.0,digits:2},
+    BTCUSD:{bid:95000,spread:50,digits:2},
+    USDJPY:{bid:149.820,spread:1.3,digits:3}
   },
   candles:[],
   openTrades:[],
@@ -1205,15 +1205,23 @@ function startBinancePrices(){
   }catch(e){}
 }
 
-// Real gold spot price — free, CORS, no key (matches TradingView ~$4,545). Binance xauusdt was wrong (~$2,330).
+// Real gold spot price — goldprice.org (same source as chart-view, confirmed working ~$3,350)
 async function fetchGoldPrice(){
   try{
-    const r=await fetch('https://api.gold-api.com/price/XAU');
+    const r=await fetch('https://data-asg.goldprice.org/dbXRates/USD');
     if(!r.ok) return;
     const d=await r.json();
-    const p=parseFloat(d.price);
-    if(p>0) updateRealPrice('XAUUSD', p, parseFloat((p+0.30).toFixed(2)));
-  }catch(e){}
+    const p=parseFloat(d?.items?.[0]?.xauPrice);
+    if(p>1000) updateRealPrice('XAUUSD', p, parseFloat((p+0.30).toFixed(2)));
+  }catch(e){
+    // fallback: try gold-api.com
+    try{
+      const r2=await fetch('https://api.gold-api.com/price/XAU');
+      const d2=await r2.json();
+      const p2=parseFloat(d2.price);
+      if(p2>1000&&p2<5000) updateRealPrice('XAUUSD', p2, parseFloat((p2+0.30).toFixed(2)));
+    }catch(e2){}
+  }
 }
 
 async function fetchForexPrices(){
@@ -1273,7 +1281,8 @@ function simulateTick(){
   const openPnL=state.openTrades.reduce((s,t)=>{
     const cp=state.prices[t.symbol]?.bid||t.openPrice;
     const pips=(t.type==='BUY'?cp-t.openPrice:t.openPrice-cp);
-    return s+pips*t.lot*(t.symbol.includes('JPY')?100:10000);
+    const mult=t.symbol==='XAUUSD'?10:t.symbol.includes('JPY')?100:10000;
+    return s+pips*t.lot*mult;
   },0);
   state.equity=state.balance+openPnL;
 
@@ -1319,7 +1328,8 @@ function updateDashboard(){
   const openPnL=state.openTrades.reduce((s,t)=>{
     const cp=state.prices[t.symbol]?.bid||t.openPrice;
     const pips=(t.type==='BUY'?cp-t.openPrice:t.openPrice-cp);
-    return s+pips*t.lot*10000;
+    const mult=t.symbol==='XAUUSD'?10:t.symbol.includes('JPY')?100:10000;
+    return s+pips*t.lot*mult;
   },0);
 
   // Metrics
@@ -1605,12 +1615,8 @@ setInterval(()=>{if(state.candles.length>0){
   renderCandles();
 }},800);
 
-// Auto-connect to signal bot via Cloudflare Tunnel (WSS)
-document.getElementById('wsHost').value = 'signals.tradingbangla.com';
-document.getElementById('wsPort').value = '';
-setTimeout(() => {
-  if (!state.connected) toggleConnect();
-}, 1500);
+// No auto-connect — signal bot offline. Demo mode runs locally with real prices.
+addNotif('info', 'EA Dashboard initialized. Real prices loading...', 'info');
 </script>
 </body>
 </html>

@@ -29,22 +29,23 @@ const candleListeners = new Set<CandleCallback>();
 let goldInterval: ReturnType<typeof setInterval> | null = null;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-// Real-time gold spot price — free, CORS-friendly, no key (matches TradingView ~$4,545)
-const GOLD_API = 'https://api.gold-api.com/price/XAU';
-const FRANKFURTER_URL = 'https://api.frankfurter.dev/v2';
+// OANDA prices via Vercel proxy — real bid/ask, updated every 5s
+// Fallback: api.gold-api.com for gold if proxy unavailable
+const GOLD_API_FALLBACK = 'https://api.gold-api.com/price/XAU';
 
-const SYMBOLS = [
-  { symbol: 'XAU/USD', binance: 'xauusdt', frankfurter: null },
-  { symbol: 'EUR/USD', binance: null, frankfurter: { base: 'EUR', target: 'USD' } },
-  { symbol: 'GBP/USD', binance: null, frankfurter: { base: 'GBP', target: 'USD' } },
-  { symbol: 'USD/JPY', binance: null, frankfurter: { base: 'USD', target: 'JPY' } },
-  { symbol: 'USD/CHF', binance: null, frankfurter: { base: 'USD', target: 'CHF' } },
-  { symbol: 'AUD/USD', binance: null, frankfurter: { base: 'AUD', target: 'USD' } },
-  { symbol: 'USD/CAD', binance: null, frankfurter: { base: 'USD', target: 'CAD' } },
-  { symbol: 'NZD/USD', binance: null, frankfurter: { base: 'NZD', target: 'USD' } },
-  { symbol: 'EUR/GBP', binance: null, frankfurter: { base: 'EUR', target: 'GBP' } },
-  { symbol: 'GBP/JPY', binance: null, frankfurter: { base: 'GBP', target: 'JPY' } },
-];
+// OANDA instrument → display symbol mapping
+const OANDA_MAP: Record<string, string> = {
+  XAU_USD: 'XAU/USD',
+  EUR_USD: 'EUR/USD',
+  GBP_USD: 'GBP/USD',
+  USD_JPY: 'USD/JPY',
+  USD_CHF: 'USD/CHF',
+  AUD_USD: 'AUD/USD',
+  USD_CAD: 'USD/CAD',
+  NZD_USD: 'NZD/USD',
+  EUR_GBP: 'EUR/GBP',
+  GBP_JPY: 'GBP/JPY',
+};
 
 let prices: Record<string, RealTimeQuote> = {};
 let candleStore: Record<string, OHLC[]> = {};
@@ -163,27 +164,47 @@ function updatePrice(sym: string, bid: number, ask?: number) {
   listeners.forEach(cb => { try { cb(quote); } catch {} });
 }
 
-async function pollGold() {
+async function pollOANDA() {
   try {
-    const res = await fetch(GOLD_API);
-    if (!res.ok) return;
-    const d = await res.json();
-    const price = parseFloat(d.price);
-    if (price > 0) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
-  } catch {}
-}
-
-async function pollFrankfurter() {
-  try {
-    for (const sym of SYMBOLS) {
-      if (!sym.frankfurter) continue;
-      const res = await fetch(`${FRANKFURTER_URL}/rates?base=${sym.frankfurter.base}&symbols=${sym.frankfurter.target}`);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const rate = data.rates?.[sym.frankfurter.target];
-      if (rate > 0) { updatePrice(sym.symbol, rate); updateForexCandle(sym.symbol, rate); }
+    const res = await fetch('/api/oanda-prices');
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const data = await res.json();
+    for (const price of (data.prices ?? [])) {
+      const sym = OANDA_MAP[price.instrument];
+      if (!sym) continue;
+      const bid = parseFloat(price.bids?.[0]?.price ?? '0');
+      const ask = parseFloat(price.asks?.[0]?.price ?? '0');
+      if (!bid) continue;
+      updatePrice(sym, bid, ask || bid);
+      if (sym === 'XAU/USD') updateGoldCandle(bid);
+      else updateForexCandle(sym, bid);
     }
-  } catch {}
+  } catch {
+    // ── Fallback when OANDA proxy unavailable (env vars not yet set) ──────────
+    // Gold: api.gold-api.com (live spot, CORS-OK)
+    // Forex: Frankfurter ECB daily (free, no key) — same as previous behaviour
+    await Promise.allSettled([
+      fetch(GOLD_API_FALLBACK).then(r => r.json()).then(d => {
+        const price = parseFloat(d.price);
+        if (price > 0) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
+      }),
+      fetch('https://api.frankfurter.dev/v2/rates?base=USD&symbols=EUR,GBP,JPY,CHF,CAD,AUD,NZD').then(r => r.json()).then(d => {
+        const rates = d.rates ?? {};
+        const pairs: Record<string, [string, boolean]> = {
+          EUR: ['EUR/USD', true], GBP: ['GBP/USD', true],
+          AUD: ['AUD/USD', true], NZD: ['NZD/USD', true],
+          JPY: ['USD/JPY', false], CHF: ['USD/CHF', false], CAD: ['USD/CAD', false],
+        };
+        for (const [code, [sym, invert]] of Object.entries(pairs)) {
+          const raw = rates[code];
+          if (!raw) continue;
+          const bid = invert ? parseFloat((1 / raw).toFixed(5)) : parseFloat(raw.toFixed(code === 'JPY' ? 3 : 5));
+          updatePrice(sym, bid, bid);
+          updateForexCandle(sym, bid);
+        }
+      }),
+    ]);
+  }
 }
 
 export async function seedHistoricalData(symbol: string): Promise<OHLC[]> {
@@ -201,16 +222,14 @@ export async function seedHistoricalData(symbol: string): Promise<OHLC[]> {
 
 export function startMarketData() {
   if (pollInterval) return;
-  pollGold();
-  pollFrankfurter();
-  pollInterval = setInterval(pollFrankfurter, 30000);
-  goldInterval = setInterval(pollGold, 12000);
-  setTimeout(() => pollFrankfurter(), 3000);
+  pollOANDA();                                    // immediate first call
+  pollInterval = setInterval(pollOANDA, 5000);   // every 5s — real-time OANDA prices
+  setTimeout(() => pollOANDA(), 2000);            // warm-up second call
 }
 
 export function stopMarketData() {
-  if (goldInterval) { clearInterval(goldInterval); goldInterval = null; }
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  goldInterval = null;
 }
 
 export function onPriceUpdate(cb: PriceCallback) {

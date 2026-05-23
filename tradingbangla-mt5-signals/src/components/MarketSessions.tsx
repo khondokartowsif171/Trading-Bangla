@@ -16,6 +16,8 @@ const SESSIONS: Session[] = [
   { name: 'New York', start: 13, end: 22, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
 ];
 
+const BDT_OFFSET = 6; // Bangladesh Standard Time = UTC+6
+
 export function MarketSessions() {
   const [currentUTCHour, setCurrentUTCHour] = useState(new Date().getUTCHours());
   const [currentMinutes, setCurrentMinutes] = useState(new Date().getUTCMinutes());
@@ -29,6 +31,7 @@ export function MarketSessions() {
     return () => clearInterval(interval);
   }, []);
 
+  // Session active detection stays UTC (forex market hours are UTC-based)
   const isSessionActive = (start: number, end: number) => {
     if (start < end) {
       return currentUTCHour >= start && currentUTCHour < end;
@@ -38,7 +41,10 @@ export function MarketSessions() {
     }
   };
 
-  const formattedTime = `${currentUTCHour.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')} UTC`;
+  // Display in BDT (UTC+6) for Bangladeshi traders
+  const bdtHour = (currentUTCHour + BDT_OFFSET) % 24;
+  const formattedTime = `${bdtHour.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')} BDT`;
+  const toBDT = (utcH: number) => ((utcH + BDT_OFFSET) % 24).toString().padStart(2, '0');
 
   return (
     <div className="bg-[#0f1423] border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
@@ -66,7 +72,7 @@ export function MarketSessions() {
             >
               <span className="text-sm font-semibold relative z-10">{session.name}</span>
               <span className="text-[10px] font-mono tracking-wider opacity-70 mt-1 relative z-10">
-                {session.start.toString().padStart(2, '0')}:00 - {session.end.toString().padStart(2, '0')}:00
+                {toBDT(session.start)}:00 – {toBDT(session.end)}:00
               </span>
               
               {active && (

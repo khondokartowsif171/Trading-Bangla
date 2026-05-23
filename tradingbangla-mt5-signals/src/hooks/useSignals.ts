@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { TradeSignal, ActionType, SignalStatus, Timeframe } from '../types';
 
-// ── Real base prices (May 2026) ──────────────────────────────────────────────
+// ── Real base prices (May 2026) — synced with forexPairs.ts in chart-view ────
 const BASE_PRICES: Record<string, number> = {
-  EURUSD: 1.08500,
-  GBPUSD: 1.27200,
-  USDJPY: 155.500,
-  XAUUSD: 3350.00,   // gold-api.com will override this live
-  USDCAD: 1.36200,
-  AUDUSD: 0.65400,
+  EURUSD: 1.08420,
+  GBPUSD: 1.27150,
+  USDJPY: 149.800,
+  XAUUSD: 4525.00,   // goldprice.org will override this live every 10s (fallback = ~real price)
+  USDCAD: 1.36240,
+  AUDUSD: 0.66520,
 };
 
 const PAIRS = [
@@ -122,27 +122,58 @@ export const useSignals = () => {
   const [signals, setSignals] = useState<TradeSignal[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const goldPriceRef = useRef<number>(BASE_PRICES.XAUUSD);
+  const forexPricesRef = useRef<Record<string, number>>({ ...BASE_PRICES });
 
-  // ── Gold-API.com live feed (XAUUSD only) ──────────────────────────────────
+  // ── OANDA real-time prices via /api/oanda-prices proxy ──────────────────────
+  // Same endpoint as the LivePriceTicker — ticker and signals show identical prices.
+  // Updates every 5s. Fallback: BASE_PRICES (set to real market values) if proxy fails.
   useEffect(() => {
-    const fetchGold = async () => {
-      try {
-        const res = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
-        const data = await res.json();
-        const price = Number(data?.items?.[0]?.xauPrice);
-        if (price > 1000) {
-          goldPriceRef.current = price;
-          // Push live gold price into active XAU signals
-          setSignals(prev => prev.map(s => {
-            if (s.pair !== 'XAUUSD' || s.status === 'PROFIT' || s.status === 'LOSS') return s;
-            const newHistory = [...s.history.slice(-20), price];
-            return { ...s, currentPrice: price, history: newHistory };
-          }));
-        }
-      } catch { /* fallback to simulation */ }
+    // OANDA instrument key → internal pair name (no slash)
+    const INST_MAP: Record<string, string> = {
+      XAU_USD: 'XAUUSD',
+      EUR_USD: 'EURUSD',
+      GBP_USD: 'GBPUSD',
+      USD_JPY: 'USDJPY',
+      USD_CAD: 'USDCAD',
+      AUD_USD: 'AUDUSD',
+      NZD_USD: 'NZDUSD',
+      USD_CHF: 'USDCHF',
+      GBP_JPY: 'GBPJPY',
+      EUR_GBP: 'EURGBP',
     };
-    fetchGold();
-    const iv = setInterval(fetchGold, 10000);
+
+    const fetchPrices = async () => {
+      try {
+        const res = await fetch('/api/oanda-prices');
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const price of (data.prices ?? [])) {
+          const pair = INST_MAP[price.instrument];
+          if (!pair) continue;
+          const bid = parseFloat(price.bids?.[0]?.price ?? '0');
+          if (!bid) continue;
+
+          if (pair === 'XAUUSD') {
+            goldPriceRef.current = bid;
+            setSignals(prev => prev.map(s =>
+              s.pair === 'XAUUSD' && s.status !== 'PROFIT' && s.status !== 'LOSS'
+                ? { ...s, currentPrice: bid, history: [...s.history.slice(-20), bid] }
+                : s
+            ));
+          } else {
+            forexPricesRef.current[pair] = bid;
+            setSignals(prev => prev.map(s =>
+              s.pair === pair && s.status !== 'PROFIT' && s.status !== 'LOSS'
+                ? { ...s, currentPrice: bid, history: [...s.history.slice(-20), bid] }
+                : s
+            ));
+          }
+        }
+      } catch { /* keep existing refs — tick sim continues */ }
+    };
+
+    fetchPrices();
+    const iv = setInterval(fetchPrices, 5000); // 5s — same cadence as LivePriceTicker
     return () => clearInterval(iv);
   }, []);
 
@@ -163,14 +194,18 @@ export const useSignals = () => {
       setSignals(prevSignals => prevSignals.map(signal => {
         if (signal.status === 'PROFIT' || signal.status === 'LOSS') return signal;
 
-        // XAUUSD: use gold-api price + small noise, not pure random walk
+        // All pairs anchored to live price refs — NO random walk drift
+        // XAUUSD: goldprice.org every 10s | Forex: Frankfurter ECB daily rates
         const isGold = signal.pair === 'XAUUSD';
         const volatility = isGold
           ? 0.08  // $0.08 tick noise for gold
           : (0.0001 * (signal.pair.includes('JPY') ? 100 : 1));
 
         const change = (Math.random() - 0.5) * volatility * 4;
-        const base = isGold ? goldPriceRef.current : signal.currentPrice;
+        const liveBase = isGold
+          ? goldPriceRef.current
+          : (forexPricesRef.current[signal.pair] ?? signal.currentPrice);
+        const base = liveBase;
         const newCurrentPrice = base + change;
 
         const diff = signal.action === 'BUY'

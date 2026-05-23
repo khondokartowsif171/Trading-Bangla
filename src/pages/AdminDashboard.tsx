@@ -37,12 +37,18 @@ const CATEGORIES = ['general', 'education', 'signals', 'strategy', 'news'];
 const autoSlug = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 80);
 
 export default function AdminDashboard() {
-  const { isLoggedIn, user, logout } = useAuth();
+  const { isLoggedIn, user, logout, login } = useAuth();
   const { darkMode } = useApp();
   const navigate = useNavigate();
 
   const [accessDenied, setAccessDenied] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
+
+  // Inline login state (used when Navbar is hidden, e.g. CRM subdomain)
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [toast, setToast] = useState<Toast | null>(null);
 
@@ -94,13 +100,22 @@ export default function AdminDashboard() {
   // Access check — admin emails OR Supabase role = 'admin'
   const ADMIN_EMAILS = ['admin@tradingbangla.com', 'khondokartowsif171@gmail.com'];
   useEffect(() => {
-    if (!isLoggedIn || !user) { navigate('/'); return; }
+    if (!isLoggedIn || !user) return; // Show inline login instead of navigating away
     // Email-based bypass — always allow these accounts
     if (ADMIN_EMAILS.includes(user.email)) { setCheckingAccess(false); return; }
     // Otherwise check Supabase role
     supabase.from('profiles').select('role').eq('id', user.id).single()
       .then(({ data }) => { if (data?.role !== 'admin') setAccessDenied(true); setCheckingAccess(false); });
-  }, [isLoggedIn, user, navigate]);
+  }, [isLoggedIn, user]);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+    const { error } = await login(loginEmail, loginPassword);
+    if (error) setLoginError(error);
+    setLoginLoading(false);
+  };
 
   // ─── Data loaders ───────────────────────────────────────────────────────────
 
@@ -283,6 +298,47 @@ export default function AdminDashboard() {
   });
 
   // ─── Access guard ────────────────────────────────────────────────────────────
+
+  // Not logged in → show embedded login form (works on any subdomain, no Navbar needed)
+  if (!isLoggedIn) return (
+    <div className={`flex h-screen items-center justify-center ${bg}`}>
+      <div className={`p-8 rounded-2xl border max-w-sm w-full mx-4 ${cardBg}`}>
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center mb-3">
+            <Lock className="w-7 h-7 text-yellow-400" />
+          </div>
+          <h2 className={`text-xl font-bold ${textPrimary}`}>Admin Login</h2>
+          <p className={`text-xs mt-1 ${textMuted}`}>Trading Bangla — Admin Dashboard</p>
+        </div>
+        <form onSubmit={handleAdminLogin} className="flex flex-col gap-3">
+          <input
+            type="email"
+            value={loginEmail}
+            onChange={e => setLoginEmail(e.target.value)}
+            placeholder="Email"
+            required
+            className={`w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-yellow-500/40 ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`}
+          />
+          <input
+            type="password"
+            value={loginPassword}
+            onChange={e => setLoginPassword(e.target.value)}
+            placeholder="Password"
+            required
+            className={`w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-yellow-500/40 ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`}
+          />
+          {loginError && <p className="text-xs text-red-400 text-center">{loginError}</p>}
+          <button
+            type="submit"
+            disabled={loginLoading}
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            {loginLoading ? 'Logging in...' : 'Login'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 
   if (checkingAccess) return (
     <div className={`flex h-screen items-center justify-center ${bg}`}>
