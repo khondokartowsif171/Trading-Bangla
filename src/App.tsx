@@ -83,8 +83,8 @@ function AppContent() {
           </Routes>
         </ErrorBoundary>
       </div>
-      {/* Desktop floating widgets — hidden on CRM */}
-      {!isCrm && (
+      {/* Desktop floating widgets — Home page only */}
+      {!isCrm && isHome && (
         <div className="hidden md:block">
           <AIChat />
           <WhatsAppFloat />
