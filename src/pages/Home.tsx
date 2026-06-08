@@ -108,7 +108,7 @@ export default function Home() {
             className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Link
-              to="/dashboard"
+              to="/forex"
               className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/40 flex items-center gap-2"
             >
               {t('startTrading')}
@@ -214,7 +214,7 @@ export default function Home() {
               </p>
               <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link
-                  to="/dashboard"
+                  to="/forex"
                   className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold hover:from-indigo-500 hover:to-purple-500 transition-all"
                 >
                   {t('startTrading')}
