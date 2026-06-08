@@ -1240,8 +1240,35 @@ async function fetchForexPrices(){
 }
 
 async function fetchRealCandles(symbol){
-  // Gold: real spot price (gold-api.com) then candles anchored to it — Binance XAUUSDT is wrong (~$2,330)
-  if(symbol==='XAUUSD'){ await fetchGoldPrice(); generateCandles(); updateChart(); return; }
+  // Gold: try Yahoo Finance for real OHLCV, fall back to generated candles anchored to real spot
+  if(symbol==='XAUUSD'){
+    await fetchGoldPrice();
+    try{
+      const r=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1h&range=4d&corsDomain=finance.yahoo.com');
+      if(!r.ok) throw new Error('yahoo '+r.status);
+      const d=await r.json();
+      const q=d?.chart?.result?.[0];
+      const ts=q?.timestamp;
+      const o=q?.indicators?.quote?.[0];
+      if(ts&&o&&o.open&&ts.length>20){
+        state.candles=ts.map((t,i)=>({
+          open:o.open[i]||state.prices.XAUUSD.bid,
+          close:o.close[i]||state.prices.XAUUSD.bid,
+          high:o.high[i]||state.prices.XAUUSD.bid,
+          low:o.low[i]||state.prices.XAUUSD.bid,
+          vol:o.volume[i]||500,
+        })).filter(c=>c.close>1000&&c.high>0);
+        // Anchor last candle to real spot
+        if(state.candles.length>0){
+          const last=state.candles[state.candles.length-1];
+          const real=state.prices.XAUUSD.bid;
+          last.close=real; last.high=Math.max(last.high,real); last.low=Math.min(last.low,real);
+        }
+        updateChart(); return;
+      }
+    }catch(e){}
+    generateCandles(); updateChart(); return;
+  }
   const binanceMap={'BTCUSD':'BTCUSDT'};
   const bs=binanceMap[symbol];
   if(!bs){generateCandles();updateChart();return;}
@@ -1263,19 +1290,124 @@ async function fetchRealCandles(symbol){
   }catch(e){generateCandles();updateChart();}
 }
 
+// ══════════════════════════════════════════════
+//  REAL INDICATOR CALCULATIONS
+// ══════════════════════════════════════════════
+function calcEMAArr(closes,period){
+  const k=2/(period+1);
+  const result=[];
+  let seed=closes.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  result.push(seed);
+  for(let i=period;i<closes.length;i++){result.push(closes[i]*k+result[result.length-1]*(1-k));}
+  return result;
+}
+function calcRSIVal(closes,period=14){
+  if(closes.length<period+2) return 50;
+  let gains=0,losses=0;
+  for(let i=closes.length-period;i<closes.length;i++){
+    const d=closes[i]-closes[i-1];
+    if(d>0) gains+=d; else losses-=d;
+  }
+  const ag=gains/period, al=losses/period;
+  return al===0?100:100-100/(1+ag/al);
+}
+function calcATRVal(candles,period=14){
+  if(candles.length<period+1) return 0;
+  const trs=candles.slice(1).map((c,i)=>Math.max(c.high-c.low,Math.abs(c.high-candles[i].close),Math.abs(c.low-candles[i].close)));
+  return trs.slice(-period).reduce((a,b)=>a+b,0)/period;
+}
+function calcBB(closes,period=20,mult=2){
+  if(closes.length<period) return {mid:closes.at(-1),upper:closes.at(-1),lower:closes.at(-1)};
+  const slice=closes.slice(-period);
+  const mid=slice.reduce((a,b)=>a+b,0)/period;
+  const std=Math.sqrt(slice.reduce((s,v)=>s+(v-mid)**2,0)/period);
+  return{mid,upper:mid+mult*std,lower:mid-mult*std};
+}
+function calcMACDVal(closes){
+  if(closes.length<27) return{macd:0,signal:0,hist:0};
+  const e12=calcEMAArr(closes,12).at(-1);
+  const e26=calcEMAArr(closes,26).at(-1);
+  const macdLine=e12-e26;
+  const macdArr=closes.slice(26).map((_,i)=>calcEMAArr(closes.slice(0,27+i),12).at(-1)-calcEMAArr(closes.slice(0,27+i),26).at(-1));
+  const sig=macdArr.length>=9?calcEMAArr(macdArr,9).at(-1):macdLine;
+  return{macd:macdLine,signal:sig,hist:macdLine-sig};
+}
+
+function updateIndicatorsFromCandles(){
+  const candles=state.candles;
+  if(candles.length<21) return;
+  const closes=candles.map(c=>c.close);
+  const rsi=calcRSIVal(closes,14);
+  const fastEMAs=calcEMAArr(closes,9);
+  const slowEMAs=calcEMAArr(closes,21);
+  const fastEMA=fastEMAs.at(-1);
+  const slowEMA=slowEMAs.at(-1);
+  const prevFast=fastEMAs.at(-2)||fastEMA;
+  const prevSlow=slowEMAs.at(-2)||slowEMA;
+  const atr=calcATRVal(candles,14);
+  const bb=calcBB(closes,20,2);
+  const macd=calcMACDVal(closes);
+
+  state.rsi=rsi;
+  state.fastEMA=fastEMA;
+  state.slowEMA=slowEMA;
+
+  // Real signal: EMA crossover + RSI filter + BB confirmation
+  const crossUp=fastEMA>slowEMA&&prevFast<=prevSlow;
+  const crossDn=fastEMA<slowEMA&&prevFast>=prevSlow;
+  const price=closes.at(-1);
+  const rsiBullish=rsi>40&&rsi<72;
+  const rsiBearish=rsi<60&&rsi>28;
+  const aboveMid=price>bb.mid;
+  const belowMid=price<bb.mid;
+  const macdBull=macd.hist>0;
+  const macdBear=macd.hist<0;
+
+  let conf=0,sig=0,reasons='';
+  if(crossUp&&rsiBullish){
+    sig=1;
+    conf=60+(macdBull?15:0)+(aboveMid?10:0)+Math.min(15,Math.round((rsi-40)/2));
+    reasons=`EMA(9) crossed ▲ EMA(21) • RSI ${rsi.toFixed(1)}${macdBull?' • MACD Bull':''}`;
+  } else if(crossDn&&rsiBearish){
+    sig=-1;
+    conf=60+(macdBear?15:0)+(belowMid?10:0)+Math.min(15,Math.round((60-rsi)/2));
+    reasons=`EMA(9) crossed ▼ EMA(21) • RSI ${rsi.toFixed(1)}${macdBear?' • MACD Bear':''}`;
+  } else if(fastEMA>slowEMA&&rsiBullish&&macdBull){
+    sig=1;
+    conf=50+Math.min(20,Math.round((rsi-40)/2));
+    reasons=`EMA Bull • RSI ${rsi.toFixed(1)} • MACD Bull`;
+  } else if(fastEMA<slowEMA&&rsiBearish&&macdBear){
+    sig=-1;
+    conf=50+Math.min(20,Math.round((60-rsi)/2));
+    reasons=`EMA Bear • RSI ${rsi.toFixed(1)} • MACD Bear`;
+  } else {
+    sig=0;
+    reasons=`RSI ${rsi.toFixed(1)} • Waiting for setup`;
+  }
+
+  // Update SL/TP based on ATR
+  const p=state.prices[state.symbol];
+  const bid=p.bid;
+  const slDist=atr*1.5||bid*0.001;
+  const tpDist=atr*2.5||bid*0.002;
+  if(sig!==0){
+    document.getElementById('sigPEntry')&&(document.getElementById('sigPEntry').textContent=bid.toFixed(p.digits));
+    document.getElementById('sigPSL')&&(document.getElementById('sigPSL').textContent=(sig===1?bid-slDist:bid+slDist).toFixed(p.digits));
+    document.getElementById('sigPTP')&&(document.getElementById('sigPTP').textContent=(sig===1?bid+tpDist:bid-tpDist).toFixed(p.digits));
+    const rr=(tpDist/slDist).toFixed(2);
+    document.getElementById('sigPRR')&&(document.getElementById('sigPRR').textContent='1:'+rr);
+    document.getElementById('sigPConf')&&(document.getElementById('sigPConf').textContent=conf+'%');
+  }
+
+  if(sig!==0||state.signal===0) {state.signal=sig;state.signalConf=Math.min(95,conf);state.signalReasons=reasons;}
+}
+
 function simulateTick(){
   tickCount++;
 
-  // RSI simulation (relative to real price)
-  state.rsi=Math.max(10,Math.min(90,state.rsi+(Math.random()-0.48)*4));
+  // Use real indicator calculations from candle data
+  updateIndicatorsFromCandles();
   const p=state.prices[state.symbol];
-  state.fastEMA=p.bid*(1+(Math.random()-0.5)*0.001);
-  state.slowEMA=p.bid*(1+(Math.random()-0.5)*0.0015);
-
-  // Signal
-  const isBuy=state.fastEMA>state.slowEMA&&state.rsi>35&&state.rsi<65;
-  const isSell=state.fastEMA<state.slowEMA&&state.rsi>35&&state.rsi<65;
-  state.signal=isBuy?1:isSell?-1:0;
 
   // Equity fluctuation
   const openPnL=state.openTrades.reduce((s,t)=>{

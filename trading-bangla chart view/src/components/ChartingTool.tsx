@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Candle,
   ChartType,
   DrawingTool,
   PairConfig,
+  IndicatorDef,
 } from '../types';
 import {
   calculateSMA,
@@ -16,9 +17,33 @@ import {
   calculateBollingerBands,
   calculateRSI,
   calculateMACD,
+  calculateSuperTrend,
+  calculateVWAP,
+  calculateCCI,
+  calculateStochastic,
+  calculateParabolicSAR,
+  calculateADX,
+  calculateWilliamsR,
+  calculatePivotPoints,
+  calculateKeltnerChannel,
+  calculateOBV,
+  calculateMomentum,
+  calculateAO,
   convertToHeikinAshi,
   parseTimeframeToMinutes,
 } from '../utils/forexMath';
+import {
+  calculateDEMA, calculateTEMA, calculateHMA, calculateSMMA, calculateZLEMA,
+  calculateMcGinley, calculateLRLine, calculateLRChannel, calculateDonchian,
+  calculateIchimoku, calculateAlligator, calculateChandelierExit, calculateATRBands,
+  calculateFractal, calculateVEMA, calculateStochRSI, calculateMFI, calculateCMF,
+  calculateAroon, calculateCMO, calculatePPO, calculateBBPctB, calculateBBWidth,
+  calculateVortex, calculateElderRay, calculateNormRSI, calculateKST, calculateQQE,
+  calculateADLine, calculateForceIndex, calculateVolumeRSI, calculateHV,
+  calculateATRPct, calculateUlcerIndex,
+} from '../utils/forexIndicators';
+import { detectSMC } from '../utils/forexSMC';
+import { detectCandlePatterns } from '../utils/forexCandlePatterns';
 
 // Pure deterministic pseudo-random number generator for consistent historical charts
 function seededRandom(seedValue: number): number {
@@ -44,7 +69,102 @@ import {
   ChevronsUpDown,
   Palette,
   Layers,
+  Search,
+  X,
+  ChevronDown,
+  ChevronRight,
+  Settings,
+  ArrowRight,
+  ArrowUpDown,
+  TrendingDown,
+  GitMerge,
 } from 'lucide-react';
+
+// Sub-panel layout constants
+const SUB_PANEL_H = 65;
+const SUB_PANEL_GAP = 14;
+
+// Ordered list of all possible sub-panels
+const SUB_PANELS_ORDER = [
+  'rsi','macd','cci','stoch','adx','willr','obv','mom','ao',
+  'stochrsi','mfi','cmf','aroon','cmo','ppo','bbpctb','bbwidth',
+  'vortex','elderray','normrsi','kst','qqe',
+  'adline','forceindex','volumersi','hv','atrpct','ulcerindex',
+];
+
+const INDICATOR_REGISTRY: IndicatorDef[] = [
+  // Trend / Overlay
+  { id:'ma20', label:'MA 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#00d4ff' },
+  { id:'ma50', label:'MA 50', category:'trend', renderType:'overlay', defaultParams:{period:50}, color:'#ffc107' },
+  { id:'ema9', label:'EMA 9', category:'trend', renderType:'overlay', defaultParams:{period:9}, color:'#ec4899' },
+  { id:'ema21', label:'EMA 21', category:'trend', renderType:'overlay', defaultParams:{period:21}, color:'#a3e635' },
+  { id:'ema50', label:'EMA 50', category:'trend', renderType:'overlay', defaultParams:{period:50}, color:'#f97316' },
+  { id:'ema200', label:'EMA 200', category:'trend', renderType:'overlay', defaultParams:{period:200}, color:'#ef4444' },
+  { id:'dema', label:'DEMA 21', category:'trend', renderType:'overlay', defaultParams:{period:21}, color:'#06b6d4' },
+  { id:'tema', label:'TEMA 21', category:'trend', renderType:'overlay', defaultParams:{period:21}, color:'#8b5cf6' },
+  { id:'hma', label:'HMA 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#10b981' },
+  { id:'smma', label:'SMMA 14', category:'trend', renderType:'overlay', defaultParams:{period:14}, color:'#f59e0b' },
+  { id:'zlema', label:'ZLEMA 21', category:'trend', renderType:'overlay', defaultParams:{period:21}, color:'#84cc16' },
+  { id:'mcginley', label:'McGinley 14', category:'trend', renderType:'overlay', defaultParams:{period:14}, color:'#e879f9' },
+  { id:'lrline', label:'LR Line 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#67e8f9' },
+  { id:'lrchannel', label:'LR Channel 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#67e8f9' },
+  { id:'donchian', label:'Donchian 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#60a5fa' },
+  { id:'ichimoku', label:'Ichimoku', category:'trend', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
+  { id:'alligator', label:'Alligator', category:'trend', renderType:'overlay', defaultParams:{}, color:'#f87171' },
+  { id:'chandelier', label:'Chandelier Exit', category:'trend', renderType:'overlay', defaultParams:{period:22,mult:3}, color:'#34d399' },
+  { id:'atrbands', label:'ATR Bands', category:'trend', renderType:'overlay', defaultParams:{period:14,mult:2}, color:'#a78bfa' },
+  { id:'fractal', label:'Fractals', category:'trend', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
+  { id:'vema', label:'Vol EMA 20', category:'trend', renderType:'overlay', defaultParams:{period:20}, color:'#6ee7b7' },
+  { id:'supertrend', label:'SuperTrend', category:'trend', renderType:'overlay', defaultParams:{period:10,mult:3}, color:'#00e676' },
+  { id:'vwap', label:'VWAP', category:'trend', renderType:'overlay', defaultParams:{}, color:'#818cf8' },
+  { id:'bb', label:'Bollinger Bands', category:'trend', renderType:'overlay', defaultParams:{period:20,stddev:2}, color:'#7c3aed' },
+  { id:'keltner', label:'Keltner Channel', category:'trend', renderType:'overlay', defaultParams:{period:20,mult:2}, color:'#a855f7' },
+  { id:'pivots', label:'Pivot Points', category:'trend', renderType:'overlay', defaultParams:{}, color:'#e2e8f0' },
+  { id:'sar', label:'Parabolic SAR', category:'trend', renderType:'overlay', defaultParams:{step:0.02,max:0.2}, color:'#f59e0b' },
+  // Oscillators
+  { id:'rsi', label:'RSI 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#a855f7' },
+  { id:'macd', label:'MACD (12,26,9)', category:'oscillator', renderType:'subpanel', defaultParams:{fast:12,slow:26,signal:9}, color:'#00d4ff' },
+  { id:'cci', label:'CCI 20', category:'oscillator', renderType:'subpanel', defaultParams:{period:20}, color:'#fbbf24' },
+  { id:'stoch', label:'Stochastic (14,3)', category:'oscillator', renderType:'subpanel', defaultParams:{period:14,smooth:3}, color:'#a3e635' },
+  { id:'adx', label:'ADX 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#f8fafc' },
+  { id:'willr', label:'Williams %R 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#c084fc' },
+  { id:'mom', label:'Momentum 10', category:'oscillator', renderType:'subpanel', defaultParams:{period:10}, color:'#22c55e' },
+  { id:'ao', label:'Awesome Osc', category:'oscillator', renderType:'subpanel', defaultParams:{}, color:'#22c55e' },
+  { id:'stochrsi', label:'StochRSI', category:'oscillator', renderType:'subpanel', defaultParams:{rsiPeriod:14,stochPeriod:14}, color:'#fb923c' },
+  { id:'mfi', label:'MFI 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#38bdf8' },
+  { id:'cmf', label:'CMF 20', category:'oscillator', renderType:'subpanel', defaultParams:{period:20}, color:'#4ade80' },
+  { id:'aroon', label:'Aroon 25', category:'oscillator', renderType:'subpanel', defaultParams:{period:25}, color:'#f472b6' },
+  { id:'cmo', label:'CMO 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#fb7185' },
+  { id:'ppo', label:'PPO (12,26)', category:'oscillator', renderType:'subpanel', defaultParams:{fast:12,slow:26}, color:'#60a5fa' },
+  { id:'bbpctb', label:'BB %B', category:'oscillator', renderType:'subpanel', defaultParams:{period:20}, color:'#a78bfa' },
+  { id:'bbwidth', label:'BB Width', category:'oscillator', renderType:'subpanel', defaultParams:{period:20}, color:'#6ee7b7' },
+  { id:'vortex', label:'Vortex 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#f87171' },
+  { id:'elderray', label:'Elder Ray 13', category:'oscillator', renderType:'subpanel', defaultParams:{period:13}, color:'#4ade80' },
+  { id:'normrsi', label:'Norm RSI 14', category:'oscillator', renderType:'subpanel', defaultParams:{period:14}, color:'#c084fc' },
+  { id:'kst', label:'KST', category:'oscillator', renderType:'subpanel', defaultParams:{}, color:'#fbbf24' },
+  { id:'qqe', label:'QQE', category:'oscillator', renderType:'subpanel', defaultParams:{rsiPeriod:14}, color:'#34d399' },
+  // Volume
+  { id:'vol', label:'Volume', category:'volume', renderType:'overlay', defaultParams:{}, color:'#00e676' },
+  { id:'obv', label:'OBV', category:'volume', renderType:'subpanel', defaultParams:{}, color:'#38bdf8' },
+  { id:'adline', label:'A/D Line', category:'volume', renderType:'subpanel', defaultParams:{}, color:'#34d399' },
+  { id:'forceindex', label:'Force Index 13', category:'volume', renderType:'subpanel', defaultParams:{period:13}, color:'#fb923c' },
+  { id:'volumersi', label:'Volume RSI 14', category:'volume', renderType:'subpanel', defaultParams:{period:14}, color:'#a78bfa' },
+  // Volatility
+  { id:'hv', label:'Hist Volatility 20', category:'volatility', renderType:'subpanel', defaultParams:{period:20}, color:'#f97316' },
+  { id:'atrpct', label:'ATR % 14', category:'volatility', renderType:'subpanel', defaultParams:{period:14}, color:'#e879f9' },
+  { id:'ulcerindex', label:'Ulcer Index 14', category:'volatility', renderType:'subpanel', defaultParams:{period:14}, color:'#fb7185' },
+  // SMC / Patterns
+  { id:'smc', label:'Smart Money (SMC)', category:'smc', renderType:'overlay', defaultParams:{}, color:'#00e676' },
+  { id:'patterns', label:'Candle Patterns', category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
+];
+
+const IND_CATEGORIES = [
+  { id:'trend' as const, label:'TREND / OVERLAY' },
+  { id:'oscillator' as const, label:'OSCILLATORS' },
+  { id:'volume' as const, label:'VOLUME' },
+  { id:'volatility' as const, label:'VOLATILITY' },
+  { id:'smc' as const, label:'SMC / PATTERNS' },
+];
 
 interface ChartingToolProps {
   pair: PairConfig;
@@ -73,13 +193,98 @@ export default function ChartingTool({
 
   // Chart visual settings
   const [chartType, setChartType] = useState<ChartType>('candle');
-  const [showMA20, setShowMA20] = useState(true);
-  const [showMA50, setShowMA50] = useState(true);
-  const [showEMA9, setShowEMA9] = useState(false);
-  const [showBB, setShowBB] = useState(false);
-  const [showRSI, setShowRSI] = useState(false);
-  const [showMACD, setShowMACD] = useState(false);
-  const [showVol, setShowVol] = useState(true);
+
+  // Set-based indicator state — single source of truth for all 100+ indicators
+  const [activeIndicators, setActiveIndicators] = useState<Set<string>>(
+    () => new Set(['ma20','ma50','vol','patterns'])
+  );
+
+  // Indicator panel state
+  const [showIndicatorPanel, setShowIndicatorPanel] = useState(false);
+  const [indicatorSearch, setIndicatorSearch] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    () => new Set(['trend','oscillator','volume','volatility','smc'])
+  );
+
+  const toggleIndicator = useCallback((id: string) => {
+    setActiveIndicators(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleCategory = useCallback((id: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Derived booleans from Set (backward compat with render code)
+  const showMA20 = activeIndicators.has('ma20');
+  const showMA50 = activeIndicators.has('ma50');
+  const showEMA9 = activeIndicators.has('ema9');
+  const showEMA21 = activeIndicators.has('ema21');
+  const showEMA50 = activeIndicators.has('ema50');
+  const showEMA200 = activeIndicators.has('ema200');
+  const showBB = activeIndicators.has('bb');
+  const showRSI = activeIndicators.has('rsi');
+  const showMACD = activeIndicators.has('macd');
+  const showVol = activeIndicators.has('vol');
+  const showSuperTrend = activeIndicators.has('supertrend');
+  const showVWAP = activeIndicators.has('vwap');
+  const showCCI = activeIndicators.has('cci');
+  const showPatterns = activeIndicators.has('patterns');
+  const showStoch = activeIndicators.has('stoch');
+  const showParabolicSAR = activeIndicators.has('sar');
+  const showADX = activeIndicators.has('adx');
+  const showWilliamsR = activeIndicators.has('willr');
+  const showKeltner = activeIndicators.has('keltner');
+  const showPivots = activeIndicators.has('pivots');
+  const showOBV = activeIndicators.has('obv');
+  const showMomentum = activeIndicators.has('mom');
+  const showAO = activeIndicators.has('ao');
+  // New overlay indicators
+  const showDEMA = activeIndicators.has('dema');
+  const showTEMA = activeIndicators.has('tema');
+  const showHMA = activeIndicators.has('hma');
+  const showSMMA = activeIndicators.has('smma');
+  const showZLEMA = activeIndicators.has('zlema');
+  const showMcGinley = activeIndicators.has('mcginley');
+  const showLRLine = activeIndicators.has('lrline');
+  const showLRChannel = activeIndicators.has('lrchannel');
+  const showDonchian = activeIndicators.has('donchian');
+  const showIchimoku = activeIndicators.has('ichimoku');
+  const showAlligator = activeIndicators.has('alligator');
+  const showChandelier = activeIndicators.has('chandelier');
+  const showATRBands = activeIndicators.has('atrbands');
+  const showFractal = activeIndicators.has('fractal');
+  const showVEMA = activeIndicators.has('vema');
+  // New sub-panel indicators
+  const showStochRSI = activeIndicators.has('stochrsi');
+  const showMFI = activeIndicators.has('mfi');
+  const showCMF = activeIndicators.has('cmf');
+  const showAroon = activeIndicators.has('aroon');
+  const showCMO = activeIndicators.has('cmo');
+  const showPPO = activeIndicators.has('ppo');
+  const showBBPctB = activeIndicators.has('bbpctb');
+  const showBBWidth = activeIndicators.has('bbwidth');
+  const showVortex = activeIndicators.has('vortex');
+  const showElderRay = activeIndicators.has('elderray');
+  const showNormRSI = activeIndicators.has('normrsi');
+  const showKST = activeIndicators.has('kst');
+  const showQQE = activeIndicators.has('qqe');
+  const showADLine = activeIndicators.has('adline');
+  const showForceIndex = activeIndicators.has('forceindex');
+  const showVolumeRSI = activeIndicators.has('volumersi');
+  const showHV = activeIndicators.has('hv');
+  const showATRPct = activeIndicators.has('atrpct');
+  const showUlcerIndex = activeIndicators.has('ulcerindex');
+
+  // Stable key for useEffect dependencies
+  const activeIndicatorsKey = useMemo(() => [...activeIndicators].sort().join(','), [activeIndicators]);
 
   // Scrolling & zooming states
   const [candleW, setCandleW] = useState(10); // scale width of 1 candle in px
@@ -88,7 +293,7 @@ export default function ChartingTool({
   const [force100, setForce100] = useState(true); // 100 real-time candles lock state
 
   // Interactive drawing state
-  const [drawingType, setDrawingType] = useState<'none' | 'trend' | 'horizontal' | 'vertical' | 'fib' | 'rectangle'>('none');
+  const [drawingType, setDrawingType] = useState<'none' | DrawingTool['type']>('none');
   const [drawProgress, setDrawProgress] = useState<{ index: number; price: number } | null>(null);
 
   // Mouse hover tracking for crosshair
@@ -105,15 +310,9 @@ export default function ChartingTool({
     centerX: number;
   } | null>(null);
 
-  // Resize boundaries
+  // Resize boundaries — simplified: all sub-panels same height
   const [charLayout, setCharLayout] = useState({
-    W: 800,
-    H: 450,
-    priceW: 78,
-    timeH: 24,
-    rsiH: 70,
-    macdH: 70,
-    chartH: 300,
+    W: 800, H: 450, priceW: 78, timeH: 24, chartH: 300,
   });
 
   // Calculate coordinates and ranges based on container sizes
@@ -122,31 +321,19 @@ export default function ChartingTool({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const W = rect.width;
-      const H = rect.height - 48; // compensate toolbar
-
+      const H = rect.height - 48;
       const priceW = 78;
       const timeH = 24;
-      const rsiH = showRSI ? 70 : 0;
-      const macdH = showMACD ? 70 : 0;
-      const padding = (showRSI ? 14 : 0) + (showMACD ? 14 : 0);
-      const chartH = Math.max(150, H - timeH - rsiH - macdH - padding - 10);
-
-      setCharLayout({
-        W,
-        H,
-        priceW,
-        timeH,
-        rsiH,
-        macdH,
-        chartH,
-         });
+      const activeSubCount = SUB_PANELS_ORDER.filter(id => activeIndicators.has(id)).length;
+      const totalSubH = activeSubCount * (SUB_PANEL_H + SUB_PANEL_GAP);
+      const chartH = Math.max(120, H - timeH - totalSubH - 10);
+      setCharLayout({ W, H, priceW, timeH, chartH });
     };
-
     handleResize();
     const obs = new ResizeObserver(handleResize);
     if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
-  }, [showRSI, showMACD]);
+  }, [activeIndicatorsKey]);
 
   // Adjust canvas sizes
   useEffect(() => {
@@ -275,57 +462,76 @@ export default function ChartingTool({
   const ma20Line = useMemo(() => calculateSMA(processedCandles, 20), [processedCandles]);
   const ma50Line = useMemo(() => calculateSMA(processedCandles, 50), [processedCandles]);
   const ema9Line = useMemo(() => calculateEMA(processedCandles, 9), [processedCandles]);
+  const ema21Line = useMemo(() => showEMA21 ? calculateEMA(processedCandles, 21) : [], [processedCandles, showEMA21]);
+  const ema50Line = useMemo(() => showEMA50 ? calculateEMA(processedCandles, 50) : [], [processedCandles, showEMA50]);
+  const ema200Line = useMemo(() => showEMA200 ? calculateEMA(processedCandles, 200) : [], [processedCandles, showEMA200]);
   const bbBands = useMemo(() => calculateBollingerBands(processedCandles, 20, 2), [processedCandles]);
   const rsiValues = useMemo(() => calculateRSI(processedCandles, 14), [processedCandles]);
   const macdData = useMemo(() => calculateMACD(processedCandles, 12, 26, 9), [processedCandles]);
+  const superTrendData = useMemo(() => showSuperTrend ? calculateSuperTrend(processedCandles, 10, 3) : { value: [], direction: [] }, [processedCandles, showSuperTrend]);
+  const vwapLine = useMemo(() => showVWAP ? calculateVWAP(processedCandles) : [], [processedCandles, showVWAP]);
+  const cciValues = useMemo(() => showCCI ? calculateCCI(processedCandles, 20) : [], [processedCandles, showCCI]);
 
-  // Detect local Smart Money Structures in the visible timeframe
-  const smcMarkers = useMemo(() => {
+  // New indicators
+  const stochData = useMemo(() => showStoch ? calculateStochastic(processedCandles, 14, 3) : { k: [], d: [] }, [processedCandles, showStoch]);
+  const sarValues = useMemo(() => showParabolicSAR ? calculateParabolicSAR(processedCandles, 0.02, 0.2) : [], [processedCandles, showParabolicSAR]);
+  const adxData = useMemo(() => showADX ? calculateADX(processedCandles, 14) : { adx: [], diPlus: [], diMinus: [] }, [processedCandles, showADX]);
+  const wrValues = useMemo(() => showWilliamsR ? calculateWilliamsR(processedCandles, 14) : [], [processedCandles, showWilliamsR]);
+  const pivotPoints = useMemo(() => showPivots ? calculatePivotPoints(processedCandles) : null, [processedCandles, showPivots]);
+  const keltnerData = useMemo(() => showKeltner ? calculateKeltnerChannel(processedCandles, 20, 2) : { upper: [], middle: [], lower: [] }, [processedCandles, showKeltner]);
+  const obvValues = useMemo(() => showOBV ? calculateOBV(processedCandles) : [], [processedCandles, showOBV]);
+  const momentumValues = useMemo(() => showMomentum ? calculateMomentum(processedCandles, 10) : [], [processedCandles, showMomentum]);
+  const aoValues = useMemo(() => showAO ? calculateAO(processedCandles) : [], [processedCandles, showAO]);
+
+  // ── NEW OVERLAY INDICATORS ──────────────────────────────────────────────────
+  const demaLine   = useMemo(() => showDEMA      ? calculateDEMA(processedCandles, 21)     : [], [processedCandles, showDEMA]);
+  const temaLine   = useMemo(() => showTEMA      ? calculateTEMA(processedCandles, 21)     : [], [processedCandles, showTEMA]);
+  const hmaLine    = useMemo(() => showHMA       ? calculateHMA(processedCandles, 20)      : [], [processedCandles, showHMA]);
+  const smmaLine   = useMemo(() => showSMMA      ? calculateSMMA(processedCandles, 14)     : [], [processedCandles, showSMMA]);
+  const zlemaLine  = useMemo(() => showZLEMA     ? calculateZLEMA(processedCandles, 21)    : [], [processedCandles, showZLEMA]);
+  const mcginleyLine = useMemo(() => showMcGinley ? calculateMcGinley(processedCandles, 14) : [], [processedCandles, showMcGinley]);
+  const lrLineLine  = useMemo(() => showLRLine   ? calculateLRLine(processedCandles, 20)   : [], [processedCandles, showLRLine]);
+  const lrChannelData = useMemo(() => showLRChannel ? calculateLRChannel(processedCandles, 20) : { upper:[],mid:[],lower:[] }, [processedCandles, showLRChannel]);
+  const donchianData  = useMemo(() => showDonchian  ? calculateDonchian(processedCandles, 20)  : { upper:[],mid:[],lower:[] }, [processedCandles, showDonchian]);
+  const ichimokuData  = useMemo(() => showIchimoku  ? calculateIchimoku(processedCandles)      : null, [processedCandles, showIchimoku]);
+  const alligatorData = useMemo(() => showAlligator ? calculateAlligator(processedCandles)     : null, [processedCandles, showAlligator]);
+  const chandelierData = useMemo(() => showChandelier ? calculateChandelierExit(processedCandles, 22, 3) : null, [processedCandles, showChandelier]);
+  const atrBandsData  = useMemo(() => showATRBands  ? calculateATRBands(processedCandles, 14, 2)  : null, [processedCandles, showATRBands]);
+  const fractalData   = useMemo(() => showFractal   ? calculateFractal(processedCandles)           : null, [processedCandles, showFractal]);
+  const vemaLine      = useMemo(() => showVEMA      ? calculateVEMA(processedCandles, 20)           : [], [processedCandles, showVEMA]);
+
+  // ── NEW SUB-PANEL INDICATORS ────────────────────────────────────────────────
+  const stochRSIData  = useMemo(() => showStochRSI   ? calculateStochRSI(processedCandles, 14, 14, 3, 3) : null, [processedCandles, showStochRSI]);
+  const mfiValues     = useMemo(() => showMFI        ? calculateMFI(processedCandles, 14)          : [], [processedCandles, showMFI]);
+  const cmfValues     = useMemo(() => showCMF        ? calculateCMF(processedCandles, 20)           : [], [processedCandles, showCMF]);
+  const aroonData     = useMemo(() => showAroon      ? calculateAroon(processedCandles, 25)          : null, [processedCandles, showAroon]);
+  const cmoValues     = useMemo(() => showCMO        ? calculateCMO(processedCandles, 14)            : [], [processedCandles, showCMO]);
+  const ppoData       = useMemo(() => showPPO        ? calculatePPO(processedCandles, 12, 26)        : null, [processedCandles, showPPO]);
+  const bbPctBValues  = useMemo(() => showBBPctB     ? calculateBBPctB(processedCandles, 20, 2)      : [], [processedCandles, showBBPctB]);
+  const bbWidthValues = useMemo(() => showBBWidth    ? calculateBBWidth(processedCandles, 20, 2)     : [], [processedCandles, showBBWidth]);
+  const vortexData    = useMemo(() => showVortex     ? calculateVortex(processedCandles, 14)         : null, [processedCandles, showVortex]);
+  const elderRayData  = useMemo(() => showElderRay   ? calculateElderRay(processedCandles, 13)       : null, [processedCandles, showElderRay]);
+  const normRSIValues = useMemo(() => showNormRSI    ? calculateNormRSI(processedCandles, 14)        : [], [processedCandles, showNormRSI]);
+  const kstData       = useMemo(() => showKST        ? calculateKST(processedCandles)                : null, [processedCandles, showKST]);
+  const qqeData       = useMemo(() => showQQE        ? calculateQQE(processedCandles, 14, 5)         : null, [processedCandles, showQQE]);
+  const adLineValues  = useMemo(() => showADLine     ? calculateADLine(processedCandles)              : [], [processedCandles, showADLine]);
+  const forceIndexValues = useMemo(() => showForceIndex ? calculateForceIndex(processedCandles, 13)  : [], [processedCandles, showForceIndex]);
+  const volumeRSIValues  = useMemo(() => showVolumeRSI  ? calculateVolumeRSI(processedCandles, 14)  : [], [processedCandles, showVolumeRSI]);
+  const hvValues      = useMemo(() => showHV         ? calculateHV(processedCandles, 20)             : [], [processedCandles, showHV]);
+  const atrPctValues  = useMemo(() => showATRPct     ? calculateATRPct(processedCandles, 14)         : [], [processedCandles, showATRPct]);
+  const ulcerValues   = useMemo(() => showUlcerIndex ? calculateUlcerIndex(processedCandles, 14)     : [], [processedCandles, showUlcerIndex]);
+
+  // Real SMC analysis on visible candles
+  const smcData = useMemo(() => {
     if (!showSMC || visibleCandles.length < 15) return null;
+    return detectSMC(visibleCandles, visibleStartIndex);
+  }, [visibleCandles, visibleStartIndex, showSMC]);
 
-    // Detect Order Blocks (OB), BOS, and CHoCH
-    // A Bullish OB is often the last bearish candles before a strong push up
-    // A Bearish OB is the last bullish candles before a strong push down
-    // BOS is broken local high or low
-    let keyHigh = -Infinity;
-    let keyLow = Infinity;
-    let highIdx = 0;
-    let lowIdx = 0;
-
-    visibleCandles.forEach((c, idx) => {
-      const actualIdx = visibleStartIndex + idx;
-      if (c.h > keyHigh) {
-        keyHigh = c.h;
-        highIdx = actualIdx;
-      }
-      if (c.l < keyLow) {
-        keyLow = c.l;
-        lowIdx = actualIdx;
-      }
-    });
-
-    // Simulated SMC regions matching current visible peaks
-    const bullishOB = {
-      top: keyLow + (keyHigh - keyLow) * 0.12,
-      bottom: keyLow,
-      startIndex: Math.max(visibleStartIndex, lowIdx - 3),
-      endIndex: Math.min(visibleEndIndex, lowIdx + 12),
-    };
-
-    const bearishOB = {
-      top: keyHigh,
-      bottom: keyHigh - (keyHigh - keyLow) * 0.12,
-      startIndex: Math.max(visibleStartIndex, highIdx - 3),
-      endIndex: Math.min(visibleEndIndex, highIdx + 12),
-    };
-
-    return {
-      bullishOB,
-      bearishOB,
-      bosPrice: keyHigh - (keyHigh - keyLow) * 0.3,
-      chochPrice: keyLow + (keyHigh - keyLow) * 0.35,
-    };
-  }, [visibleCandles, visibleStartIndex, visibleEndIndex, showSMC]);
+  // Candlestick pattern markers on visible window
+  const patternMarkers = useMemo(() => {
+    if (!showPatterns || visibleCandles.length < 3) return [];
+    return detectCandlePatterns(visibleCandles, 2);
+  }, [visibleCandles, showPatterns]);
 
   // Canvas Coordinate mapping helper
   const getCoordinates = (index: number, price: number, minPrice: number, maxPrice: number) => {
@@ -453,67 +659,69 @@ export default function ChartingTool({
     ctx.stroke();
 
     // 3. RENDER SMART MONEY CONCEPT (SMC) VISUAL OVERLAYS
-    if (showSMC && smcMarkers) {
-      // Bullish OB
-      const obStart = getCoordinates(smcMarkers.bullishOB.startIndex, smcMarkers.bullishOB.top, minPrice, maxPrice);
-      const obEnd = getCoordinates(smcMarkers.bullishOB.endIndex, smcMarkers.bullishOB.bottom, minPrice, maxPrice);
-      const obW = obEnd.x - obStart.x;
-      const obH = obEnd.y - obStart.y;
+    if (showSMC && smcData) {
+      ctx.font = '700 8px "DM Mono", monospace';
 
-      if (obW > 0 && obH > 0) {
-        ctx.fillStyle = 'rgba(0, 230, 118, 0.05)';
-        ctx.strokeStyle = 'rgba(0, 230, 118, 0.25)';
+      // FVG Zones — shaded imbalance rectangles
+      smcData.fvgZones.forEach(fvg => {
+        const startX = chartW - (visibleCandles.length - (fvg.startIndex - visibleStartIndex)) * step;
+        const endX = Math.min(chartW, startX + step * 8);
+        const topY = toY(fvg.top);
+        const botY = toY(fvg.bottom);
+        if (fvg.filled) return;
+        if (fvg.type === 'bullish') {
+          ctx.fillStyle = 'rgba(0, 230, 118, 0.07)';
+          ctx.strokeStyle = 'rgba(0, 230, 118, 0.3)';
+        } else {
+          ctx.fillStyle = 'rgba(255, 61, 87, 0.07)';
+          ctx.strokeStyle = 'rgba(255, 61, 87, 0.3)';
+        }
+        ctx.lineWidth = 0.8;
+        ctx.fillRect(startX, topY, endX - startX, botY - topY);
+        ctx.strokeRect(startX, topY, endX - startX, botY - topY);
+        ctx.fillStyle = fvg.type === 'bullish' ? '#00e676' : '#ff3d57';
+        ctx.fillText('FVG', startX + 3, topY + 10);
+      });
+
+      // Order Blocks
+      smcData.orderBlocks.forEach(ob => {
+        const si = ob.startIndex - visibleStartIndex;
+        const ei = ob.endIndex - visibleStartIndex;
+        const startX = chartW - (visibleCandles.length - si) * step;
+        const endX = Math.min(chartW - 4, chartW - (visibleCandles.length - Math.min(ei, visibleCandles.length)) * step);
+        const topY = toY(ob.high);
+        const botY = toY(ob.low);
+        if (endX <= startX) return;
+        if (ob.type === 'bullish') {
+          ctx.fillStyle = ob.mitigated ? 'rgba(0,230,118,0.03)' : 'rgba(0,230,118,0.06)';
+          ctx.strokeStyle = ob.mitigated ? 'rgba(0,230,118,0.15)' : 'rgba(0,230,118,0.4)';
+        } else {
+          ctx.fillStyle = ob.mitigated ? 'rgba(255,61,87,0.03)' : 'rgba(255,61,87,0.06)';
+          ctx.strokeStyle = ob.mitigated ? 'rgba(255,61,87,0.15)' : 'rgba(255,61,87,0.4)';
+        }
+        ctx.lineWidth = ob.mitigated ? 0.5 : 1;
+        ctx.fillRect(startX, topY, endX - startX, botY - topY);
+        ctx.strokeRect(startX, topY, endX - startX, botY - topY);
+        ctx.fillStyle = ob.type === 'bullish' ? '#00e676' : '#ff3d57';
+        ctx.fillText(ob.type === 'bullish' ? '↑OB' : '↓OB', startX + 3, topY + 10);
+      });
+
+      // BOS / CHoCH structure lines
+      smcData.structureBreaks.forEach(sb => {
+        const sbY = toY(sb.price);
+        if (sbY < 0 || sbY > charLayout.chartH) return;
+        const isCHoCH = sb.type === 'CHoCH';
+        ctx.strokeStyle = isCHoCH ? 'rgba(255,193,7,0.7)' : 'rgba(0,212,255,0.7)';
+        ctx.setLineDash(isCHoCH ? [3, 3] : [5, 3]);
         ctx.lineWidth = 1;
-        ctx.fillRect(obStart.x, obStart.y, obW, obH);
-        ctx.strokeRect(obStart.x, obStart.y, obW, obH);
-        ctx.fillStyle = '#00e676';
-        ctx.font = '8px "Syne", sans-serif';
-        ctx.fillText('Bullish OB', obStart.x + 4, obStart.y + 12);
-      }
-
-      // Bearish OB
-      const bearOBStart = getCoordinates(smcMarkers.bearishOB.startIndex, smcMarkers.bearishOB.top, minPrice, maxPrice);
-      const bearOBEnd = getCoordinates(smcMarkers.bearishOB.endIndex, smcMarkers.bearishOB.bottom, minPrice, maxPrice);
-      const bearW = bearOBEnd.x - bearOBStart.x;
-      const bearH = bearOBEnd.y - bearOBStart.y;
-
-      if (bearW > 0 && bearH > 0) {
-        ctx.fillStyle = 'rgba(255, 61, 87, 0.05)';
-        ctx.strokeStyle = 'rgba(255, 61, 87, 0.25)';
-        ctx.lineWidth = 1;
-        ctx.fillRect(bearOBStart.x, bearOBStart.y, bearW, bearH);
-        ctx.strokeRect(bearOBStart.x, bearOBStart.y, bearW, bearH);
-        ctx.fillStyle = '#ff3d57';
-        ctx.font = '8px "Syne", sans-serif';
-        ctx.fillText('Bearish OB', bearOBStart.x + 4, bearOBStart.y + 12);
-      }
-
-      // BOS line
-      const bosY = toY(smcMarkers.bosPrice);
-      ctx.strokeStyle = 'rgba(0, 212, 255, 0.6)';
-      ctx.setLineDash([4, 4]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(20, bosY);
-      ctx.lineTo(chartW - 20, bosY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#00d4ff';
-      ctx.font = '700 8.5px "DM Mono", monospace';
-      ctx.fillText('BOS ➔', 22, bosY - 4);
-
-      // CHoCH line
-      const chochY = toY(smcMarkers.chochPrice);
-      ctx.strokeStyle = 'rgba(255, 193, 7, 0.6)';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(20, chochY);
-      ctx.lineTo(chartW - 20, chochY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#ffc107';
-      ctx.font = '700 8.5px "DM Mono", monospace';
-      ctx.fillText('CHoCH ➔', 22, chochY - 4);
+        ctx.beginPath();
+        ctx.moveTo(8, sbY);
+        ctx.lineTo(chartW - 8, sbY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = isCHoCH ? '#ffc107' : '#00d4ff';
+        ctx.fillText(`${sb.type} ${sb.direction === 'bullish' ? '↑' : '↓'}`, 10, sbY - 3);
+      });
     }
 
     // 4. BOLLINGER BANDS DRAW
@@ -651,6 +859,108 @@ export default function ChartingTool({
       ctx.stroke();
     }
 
+    const drawLine = (values: (number | null)[], color: string, lw: number) => {
+      if (!values.length) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      let s = false;
+      visibleCandles.forEach((_c, idx) => {
+        const val = values[visibleStartIndex + idx];
+        if (val == null) return;
+        const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        if (!s) { ctx.moveTo(posX, toY(val)); s = true; } else { ctx.lineTo(posX, toY(val)); }
+      });
+      ctx.stroke();
+    };
+
+    if (showEMA21) drawLine(ema21Line, '#a3e635', 1.4);   // lime
+    if (showEMA50) drawLine(ema50Line, '#f97316', 1.4);   // orange
+    if (showEMA200) drawLine(ema200Line, '#ef4444', 1.8); // red (strong)
+    if (showVWAP) drawLine(vwapLine, '#818cf8', 1.4);     // indigo
+
+    // SuperTrend — color-coded line
+    if (showSuperTrend && superTrendData.value.length) {
+      ctx.lineWidth = 2;
+      visibleCandles.forEach((_c, idx) => {
+        if (idx === 0) return;
+        const ai = visibleStartIndex + idx;
+        const v1 = superTrendData.value[ai - 1], v2 = superTrendData.value[ai];
+        const d2 = superTrendData.direction[ai];
+        if (v1 == null || v2 == null || d2 == null) return;
+        const x1 = chartW - (visibleCandles.length - idx + 1) * step + candleW / 2;
+        const x2 = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        ctx.strokeStyle = d2 ? 'rgba(0,230,118,0.85)' : 'rgba(255,61,87,0.85)';
+        ctx.beginPath();
+        ctx.moveTo(x1, toY(v1));
+        ctx.lineTo(x2, toY(v2));
+        ctx.stroke();
+      });
+    }
+
+    // 5b. KELTNER CHANNEL
+    if (showKeltner && keltnerData.upper.length) {
+      ctx.save();
+      const kUpper = keltnerData.upper.slice(visibleStartIndex, visibleEndIndex);
+      const kLower = keltnerData.lower.slice(visibleStartIndex, visibleEndIndex);
+      const kMid = keltnerData.middle.slice(visibleStartIndex, visibleEndIndex);
+      ctx.beginPath();
+      kUpper.forEach((v, i) => {
+        if (v == null) return;
+        const x = chartW - (visibleCandles.length - i) * step + candleW / 2;
+        i === 0 || kUpper[i-1] == null ? ctx.moveTo(x, toY(v)) : ctx.lineTo(x, toY(v));
+      });
+      kLower.slice().reverse().forEach((v, i) => {
+        const ri = kLower.length - 1 - i;
+        if (v == null) return;
+        const x = chartW - (visibleCandles.length - ri) * step + candleW / 2;
+        ctx.lineTo(x, toY(v));
+      });
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(168,85,247,0.06)';
+      ctx.fill();
+      const drawKLine = (arr: (number|null)[], col: string) => {
+        ctx.beginPath(); ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+        arr.forEach((v, i) => {
+          if (v == null) return;
+          const x = chartW - (visibleCandles.length - i) * step + candleW / 2;
+          i === 0 || arr[i-1] == null ? ctx.moveTo(x, toY(v)) : ctx.lineTo(x, toY(v));
+        });
+        ctx.stroke();
+      };
+      drawKLine(kUpper, 'rgba(168,85,247,0.8)');
+      drawKLine(kLower, 'rgba(168,85,247,0.8)');
+      drawKLine(kMid, 'rgba(168,85,247,0.45)');
+      ctx.restore();
+    }
+
+    // 5c. PIVOT POINTS
+    if (showPivots && pivotPoints) {
+      const pivotLevels = [
+        { v: pivotPoints.pp, label: 'PP', color: '#e2e8f0' },
+        { v: pivotPoints.r1, label: 'R1', color: '#f87171' },
+        { v: pivotPoints.r2, label: 'R2', color: '#ef4444' },
+        { v: pivotPoints.r3, label: 'R3', color: '#dc2626' },
+        { v: pivotPoints.s1, label: 'S1', color: '#4ade80' },
+        { v: pivotPoints.s2, label: 'S2', color: '#22c55e' },
+        { v: pivotPoints.s3, label: 'S3', color: '#16a34a' },
+      ];
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1;
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      pivotLevels.forEach(({ v, label, color }) => {
+        if (v < minPrice - (maxPrice - minPrice) || v > maxPrice + (maxPrice - minPrice)) return;
+        const y = toY(v);
+        ctx.strokeStyle = color + 'bb';
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(chartW, y); ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillText(label + ' ' + v.toFixed(pair.dec), chartW - 52, y - 2);
+      });
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // 6. VOLUME OVERLAY TRACE (Bottom within main price graph)
     if (showVol) {
       const vHigh = Math.max(...visibleCandles.map((c) => c.v)) || 100;
@@ -761,6 +1071,180 @@ export default function ChartingTool({
       }
     });
 
+    // 7b. CANDLESTICK PATTERN MARKERS
+    if (showPatterns && patternMarkers.length > 0) {
+      ctx.font = 'bold 8px "DM Mono", monospace';
+      patternMarkers.forEach(pm => {
+        const posX = chartW - (visibleCandles.length - pm.index) * step + candleW / 2;
+        if (posX < 0 || posX > chartW) return;
+        if (pm.type === 'bullish') {
+          // Triangle below candle
+          const baseY = toY(pm.price) + 10;
+          ctx.fillStyle = '#00e676';
+          ctx.beginPath();
+          ctx.moveTo(posX, baseY - 6);
+          ctx.lineTo(posX - 4, baseY);
+          ctx.lineTo(posX + 4, baseY);
+          ctx.closePath();
+          ctx.fill();
+          if (candleW >= 6) {
+            ctx.fillStyle = '#00e676';
+            ctx.textAlign = 'center';
+            ctx.fillText(pm.name, posX, baseY + 9);
+          }
+        } else if (pm.type === 'bearish') {
+          // Triangle above candle
+          const tipY = toY(pm.price) - 10;
+          ctx.fillStyle = '#ff3d57';
+          ctx.beginPath();
+          ctx.moveTo(posX, tipY + 6);
+          ctx.lineTo(posX - 4, tipY);
+          ctx.lineTo(posX + 4, tipY);
+          ctx.closePath();
+          ctx.fill();
+          if (candleW >= 6) {
+            ctx.fillStyle = '#ff3d57';
+            ctx.textAlign = 'center';
+            ctx.fillText(pm.name, posX, tipY - 3);
+          }
+        } else {
+          ctx.fillStyle = '#fbbf24';
+          ctx.textAlign = 'center';
+          ctx.fillText('◆', posX, toY(pm.price) - 10);
+        }
+      });
+      ctx.textAlign = 'left';
+    }
+
+    // 7c. PARABOLIC SAR DOTS
+    if (showParabolicSAR && sarValues.length) {
+      visibleCandles.forEach((c, idx) => {
+        const ai = visibleStartIndex + idx;
+        const sar = sarValues[ai];
+        if (sar == null) return;
+        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const y = toY(sar);
+        const isBull = sar < c.l;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(2, candleW * 0.18), 0, Math.PI * 2);
+        ctx.fillStyle = isBull ? '#10b981' : '#f59e0b';
+        ctx.fill();
+      });
+    }
+
+    // 7d. NEW SINGLE-LINE OVERLAY INDICATORS
+    const drawLineOverlay = (values: (number|null)[], color: string, lw = 1.4) => {
+      if (!values.length) return;
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+      let s = false;
+      visibleCandles.forEach((_c, idx) => {
+        const v = values[visibleStartIndex + idx];
+        if (v == null) return;
+        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        if (!s) { ctx.moveTo(x, toY(v)); s = true; } else { ctx.lineTo(x, toY(v)); }
+      });
+      ctx.stroke();
+    };
+    if (showDEMA)     drawLineOverlay(demaLine,     '#06b6d4', 1.4);
+    if (showTEMA)     drawLineOverlay(temaLine,     '#8b5cf6', 1.4);
+    if (showHMA)      drawLineOverlay(hmaLine,      '#10b981', 1.6);
+    if (showSMMA)     drawLineOverlay(smmaLine,     '#f59e0b', 1.4);
+    if (showZLEMA)    drawLineOverlay(zlemaLine,    '#84cc16', 1.4);
+    if (showMcGinley) drawLineOverlay(mcginleyLine, '#e879f9', 1.4);
+    if (showLRLine)   drawLineOverlay(lrLineLine,   '#67e8f9', 1.4);
+    if (showVEMA)     drawLineOverlay(vemaLine,     '#6ee7b7', 1.4);
+
+    // 7e. LR CHANNEL
+    if (showLRChannel && lrChannelData.mid.length) {
+      const lrSlice = (arr: (number|null)[]) => arr.slice(visibleStartIndex, visibleEndIndex);
+      const drawCh = (arr: (number|null)[], col: string, lw = 1.1) => {
+        ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); let s = false;
+        lrSlice(arr).forEach((v, i) => { if (v==null) return; const x = chartW-(visibleCandles.length-i)*step+candleW/2; if (!s){ctx.moveTo(x,toY(v));s=true;}else ctx.lineTo(x,toY(v)); });
+        ctx.stroke();
+      };
+      // Fill between upper/lower
+      ctx.beginPath(); let sf=false;
+      lrSlice(lrChannelData.upper).forEach((v,i)=>{ if(v==null)return; const x=chartW-(visibleCandles.length-i)*step+candleW/2; if(!sf){ctx.moveTo(x,toY(v));sf=true;}else ctx.lineTo(x,toY(v)); });
+      lrSlice(lrChannelData.lower).slice().reverse().forEach((v,ri)=>{ if(v==null)return; const i=lrChannelData.lower.slice(visibleStartIndex,visibleEndIndex).length-1-ri; const x=chartW-(visibleCandles.length-i)*step+candleW/2; ctx.lineTo(x,toY(v)); });
+      ctx.closePath(); ctx.fillStyle='rgba(103,232,249,0.05)'; ctx.fill();
+      drawCh(lrChannelData.upper,'rgba(103,232,249,0.7)');
+      drawCh(lrChannelData.lower,'rgba(103,232,249,0.7)');
+      drawCh(lrChannelData.mid,'rgba(103,232,249,0.4)');
+    }
+
+    // 7f. DONCHIAN CHANNEL
+    if (showDonchian && donchianData.upper.length) {
+      ctx.save();
+      const donUpper = donchianData.upper.slice(visibleStartIndex, visibleEndIndex);
+      const donLower = donchianData.lower.slice(visibleStartIndex, visibleEndIndex);
+      const donMid   = donchianData.mid.slice(visibleStartIndex, visibleEndIndex);
+      ctx.beginPath(); let sf2=false;
+      donUpper.forEach((v,i)=>{ if(v==null)return; const x=chartW-(visibleCandles.length-i)*step+candleW/2; if(!sf2){ctx.moveTo(x,toY(v));sf2=true;}else ctx.lineTo(x,toY(v)); });
+      donLower.slice().reverse().forEach((v,ri)=>{ if(v==null)return; const i=donLower.length-1-ri; const x=chartW-(visibleCandles.length-i)*step+candleW/2; ctx.lineTo(x,toY(v)); });
+      ctx.closePath(); ctx.fillStyle='rgba(96,165,250,0.05)'; ctx.fill();
+      const drawDL = (arr:(number|null)[],col:string) => { ctx.strokeStyle=col; ctx.lineWidth=1.1; ctx.beginPath(); let s=false; arr.forEach((v,i)=>{ if(v==null)return; const x=chartW-(visibleCandles.length-i)*step+candleW/2; if(!s){ctx.moveTo(x,toY(v));s=true;}else ctx.lineTo(x,toY(v)); }); ctx.stroke(); };
+      drawDL(donUpper,'rgba(96,165,250,0.8)'); drawDL(donLower,'rgba(96,165,250,0.8)'); drawDL(donMid,'rgba(96,165,250,0.4)');
+      ctx.restore();
+    }
+
+    // 7g. ICHIMOKU CLOUD
+    if (showIchimoku && ichimokuData) {
+      ctx.save();
+      const ic = ichimokuData;
+      // Cloud fill
+      for (let idx=0; idx<visibleCandles.length-1; idx++) {
+        const ai=visibleStartIndex+idx;
+        const sA1=ic.senkouA[ai], sB1=ic.senkouB[ai], sA2=ic.senkouA[ai+1], sB2=ic.senkouB[ai+1];
+        if (sA1==null||sB1==null||sA2==null||sB2==null) continue;
+        const x1=chartW-(visibleCandles.length-idx)*step+candleW/2, x2=chartW-(visibleCandles.length-idx-1)*step+candleW/2;
+        ctx.beginPath(); ctx.moveTo(x1,toY(sA1)); ctx.lineTo(x2,toY(sA2)); ctx.lineTo(x2,toY(sB2)); ctx.lineTo(x1,toY(sB1)); ctx.closePath();
+        ctx.fillStyle = sA1>=sB1 ? 'rgba(0,230,118,0.08)' : 'rgba(255,61,87,0.08)'; ctx.fill();
+      }
+      // Lines
+      const drawIL = (arr:(number|null)[],col:string,lw=1.1) => { ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.beginPath(); let s=false; visibleCandles.forEach((_,idx)=>{ const v=arr[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step+candleW/2; if(!s){ctx.moveTo(x,toY(v));s=true;}else ctx.lineTo(x,toY(v)); }); ctx.stroke(); };
+      drawIL(ic.tenkan,'#ef4444',1.3); drawIL(ic.kijun,'#3b82f6',1.3);
+      drawIL(ic.senkouA,'rgba(0,230,118,0.6)'); drawIL(ic.senkouB,'rgba(255,61,87,0.6)');
+      ctx.setLineDash([3,3]); drawIL(ic.chikou,'rgba(255,193,7,0.6)'); ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // 7h. ALLIGATOR
+    if (showAlligator && alligatorData) {
+      const drawAL = (arr:(number|null)[],col:string) => { ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.beginPath(); let s=false; visibleCandles.forEach((_,idx)=>{ const v=arr[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step+candleW/2; if(!s){ctx.moveTo(x,toY(v));s=true;}else ctx.lineTo(x,toY(v)); }); ctx.stroke(); };
+      drawAL(alligatorData.jaw,'#3b82f6'); drawAL(alligatorData.teeth,'#ef4444'); drawAL(alligatorData.lips,'#22c55e');
+    }
+
+    // 7i. CHANDELIER EXIT
+    if (showChandelier && chandelierData) {
+      ctx.save();
+      visibleCandles.forEach((c,idx) => {
+        const ai=visibleStartIndex+idx;
+        const ls=chandelierData.longStop[ai], ss=chandelierData.shortStop[ai];
+        const x=chartW-(visibleCandles.length-idx)*step+candleW/2;
+        if(ls!=null){ ctx.beginPath(); ctx.arc(x,toY(ls),2.5,0,Math.PI*2); ctx.fillStyle='#34d399'; ctx.fill(); }
+        if(ss!=null){ ctx.beginPath(); ctx.arc(x,toY(ss),2.5,0,Math.PI*2); ctx.fillStyle='#f87171'; ctx.fill(); }
+      });
+      ctx.restore();
+    }
+
+    // 7j. ATR BANDS
+    if (showATRBands && atrBandsData) {
+      ctx.save();
+      const drawAB = (arr:(number|null)[],col:string) => { ctx.strokeStyle=col; ctx.lineWidth=1.1; ctx.setLineDash([4,3]); ctx.beginPath(); let s=false; visibleCandles.forEach((_,idx)=>{ const v=arr[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step+candleW/2; if(!s){ctx.moveTo(x,toY(v));s=true;}else ctx.lineTo(x,toY(v)); }); ctx.stroke(); ctx.setLineDash([]); };
+      drawAB(atrBandsData.upper,'rgba(167,139,250,0.8)'); drawAB(atrBandsData.lower,'rgba(167,139,250,0.8)'); drawAB(atrBandsData.mid,'rgba(167,139,250,0.4)');
+      ctx.restore();
+    }
+
+    // 7k. BILL WILLIAMS FRACTALS
+    if (showFractal && fractalData) {
+      visibleCandles.forEach((c,idx) => {
+        const ai=visibleStartIndex+idx;
+        const x=chartW-(visibleCandles.length-idx)*step+candleW/2;
+        if(fractalData.bullFractal[ai]){ ctx.fillStyle='#22c55e'; ctx.beginPath(); ctx.moveTo(x,toY(c.l)-8); ctx.lineTo(x-5,toY(c.l)-14); ctx.lineTo(x+5,toY(c.l)-14); ctx.closePath(); ctx.fill(); }
+        if(fractalData.bearFractal[ai]){ ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.moveTo(x,toY(c.h)+8); ctx.lineTo(x-5,toY(c.h)+14); ctx.lineTo(x+5,toY(c.h)+14); ctx.closePath(); ctx.fill(); }
+      });
+    }
+
     // 8. RENDER ACTIVE SAVED CUSTOM DRAWINGS (Trendlines, Fibs, Shapes)
     drawings.forEach((d) => {
       ctx.strokeStyle = d.color;
@@ -802,6 +1286,70 @@ export default function ChartingTool({
         ctx.fillStyle = 'rgba(0, 212, 255, 0.05)';
         ctx.fillRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
         ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+      } else if (d.type === 'ray' && d.points.length >= 1) {
+        const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(chartW + 9999, p1.y + (d.points.length >= 2 ? (getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice).y - p1.y) * 999 : 0));
+        ctx.stroke();
+        ctx.font = '9px sans-serif';
+        ctx.fillText('→', p1.x + 4, p1.y - 3);
+      } else if (d.type === 'channel' && d.points.length >= 2) {
+        const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const p2 = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        const dy = p2.y - p1.y;
+        const offset2 = d.points.length >= 3 ? (getCoordinates(d.points[2].index, d.points[2].price, minPrice, maxPrice).y - p1.y) : 30;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y + offset2); ctx.lineTo(p2.x, p2.y + offset2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = d.color + '18';
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p2.x, p2.y + offset2); ctx.lineTo(p1.x, p1.y + offset2);
+        ctx.closePath(); ctx.fill();
+        void dy;
+      } else if (d.type === 'extline' && d.points.length >= 2) {
+        const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const p2 = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.sqrt(dx*dx+dy*dy)||1;
+        const ext = 9999;
+        ctx.beginPath(); ctx.moveTo(p1.x - (dx/len)*ext, p1.y - (dy/len)*ext); ctx.lineTo(p2.x + (dx/len)*ext, p2.y + (dy/len)*ext); ctx.stroke();
+      } else if (d.type === 'regression' && d.points.length >= 2) {
+        const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const p2 = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        ctx.strokeStyle = d.color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+        ctx.setLineDash([3,3]); ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y-20); ctx.lineTo(p2.x, p2.y-20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y+20); ctx.lineTo(p2.x, p2.y+20); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (d.type === 'pricerange' && d.points.length >= 2) {
+        const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const p2 = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        const cx2 = (p1.x + p2.x)/2;
+        ctx.strokeStyle = d.color; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p1.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p1.x,p2.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx2,p1.y); ctx.lineTo(cx2,p2.y); ctx.stroke();
+        const pDiff = Math.abs(d.points[1].price - d.points[0].price);
+        ctx.font='bold 9px monospace'; ctx.fillStyle=d.color; ctx.textAlign='center';
+        ctx.fillText(`Δ${pDiff.toFixed(pair.dec)}`, cx2, (p1.y+p2.y)/2+4);
+        ctx.textAlign='left';
+      } else if (d.type === 'longpos' && d.points.length >= 2) {
+        const entry = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const tp    = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        ctx.fillStyle='rgba(0,230,118,0.08)'; ctx.fillRect(entry.x, tp.y, chartW-entry.x, entry.y-tp.y);
+        ctx.strokeStyle='rgba(0,230,118,0.7)'; ctx.lineWidth=1; ctx.strokeRect(entry.x, tp.y, chartW-entry.x, entry.y-tp.y);
+        ctx.fillStyle='rgba(0,230,118,0.9)'; ctx.font='bold 9px monospace'; ctx.fillText('LONG ENTRY', entry.x+4, entry.y-4);
+        ctx.fillText('TP', entry.x+4, tp.y+12);
+      } else if (d.type === 'shortpos' && d.points.length >= 2) {
+        const entry = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
+        const sl    = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
+        ctx.fillStyle='rgba(255,61,87,0.08)'; ctx.fillRect(entry.x, entry.y, chartW-entry.x, sl.y-entry.y);
+        ctx.strokeStyle='rgba(255,61,87,0.7)'; ctx.lineWidth=1; ctx.strokeRect(entry.x, entry.y, chartW-entry.x, sl.y-entry.y);
+        ctx.fillStyle='rgba(255,61,87,0.9)'; ctx.font='bold 9px monospace'; ctx.fillText('SHORT ENTRY', entry.x+4, entry.y-4);
+        ctx.fillText('SL', entry.x+4, sl.y+12);
       } else if (d.type === 'fib' && d.points.length >= 2) {
         const p1 = getCoordinates(d.points[0].index, d.points[0].price, minPrice, maxPrice);
         const p2 = getCoordinates(d.points[1].index, d.points[1].price, minPrice, maxPrice);
@@ -874,10 +1422,26 @@ export default function ChartingTool({
       ctx.fillText(lastCandle.c.toFixed(pair.dec), chartW + charLayout.priceW / 2, ly + 3.5);
     }
 
+    // Dynamic sub-panel Y position helpers (must be before first sub-panel usage)
+    const activeSubs = SUB_PANELS_ORDER.filter(id => activeIndicators.has(id));
+    const getPY = (id: string): number => {
+      let y = charLayout.chartH + charLayout.timeH;
+      for (const pid of activeSubs) {
+        if (pid === id) return y;
+        y += SUB_PANEL_H + SUB_PANEL_GAP;
+      }
+      return y;
+    };
+    const panelStart = (which: 'stoch' | 'adx' | 'obv' | 'wr' | 'mom') => {
+      const map: Record<string, string> = { stoch:'stoch', adx:'adx', obv:'obv', wr:'willr', mom:'mom' };
+      return getPY(map[which] || which);
+    };
+    void panelStart; // prevent unused warning if panelStart isn't referenced elsewhere
+
     // 10. RSI SUB-DRAWINGS
     if (showRSI) {
-      const rsiYStart = charLayout.chartH + 24;
-      const rsiH = charLayout.rsiH;
+      const rsiYStart = getPY('rsi');
+      const rsiH = SUB_PANEL_H;
       const rsiBottom = rsiYStart + rsiH;
 
       // Sub-axes background
@@ -935,10 +1499,47 @@ export default function ChartingTool({
       ctx.fillText(`RSI (14) - [${visibleCandles[visibleCandles.length - 1] ? (rsiValues[visibleStartIndex + visibleCandles.length - 1]?.toFixed(1) || 'N/A') : 'N/A'}]`, 12, rsiYStart + 12);
     }
 
+    // 10b. CCI SUB-PANEL
+    if (showCCI && cciValues.length) {
+      const cciYStart = getPY('cci');
+      const cciH = SUB_PANEL_H;
+      const cciMid = cciYStart + cciH / 2;
+
+      ctx.fillStyle = 'rgba(7,11,18,0.4)';
+      ctx.fillRect(0, cciYStart, chartW, cciH);
+
+      const maxCCIAbs = Math.max(100, ...visibleCandles.map((_, i) => Math.abs(cciValues[visibleStartIndex + i] ?? 0)));
+      const cciToY = (v: number) => cciMid - (v / maxCCIAbs) * (cciH / 2);
+
+      [-100, 0, 100].forEach(lv => {
+        const ly = cciToY(lv);
+        ctx.strokeStyle = lv === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,193,7,0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(chartW, ly); ctx.stroke();
+        ctx.fillStyle = '#7986cb'; ctx.font = '8.5px "DM Mono"';
+        ctx.fillText(String(lv), chartW + 6, ly + 3.5);
+      });
+
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      let cs = false;
+      visibleCandles.forEach((_c, idx) => {
+        const v = cciValues[visibleStartIndex + idx];
+        if (v == null) return;
+        const px = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        if (!cs) { ctx.moveTo(px, cciToY(v)); cs = true; } else { ctx.lineTo(px, cciToY(v)); }
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = '#b3c5ff'; ctx.font = 'bold 9px "Syne"';
+      ctx.fillText('CCI (20)', 12, cciYStart + 12);
+    }
+
     // 11. MACD SUB-DRAWINGS
     if (showMACD) {
-      const macdYStart = charLayout.chartH + 24 + (showRSI ? charLayout.rsiH + 14 : 0);
-      const macdH = charLayout.macdH;
+      const macdYStart = getPY('macd');
+      const macdH = SUB_PANEL_H;
       const macdBottom = macdYStart + macdH;
 
       ctx.fillStyle = 'rgba(7, 11, 18, 0.4)';
@@ -1037,7 +1638,372 @@ export default function ChartingTool({
       ctx.fillText('MACD (12, 26, 9)', 12, macdYStart + 12);
     }
 
-  }, [charLayout, visibleCandles, visibleStartIndex, pair, showMA20, showMA50, showEMA9, showBB, showRSI, showMACD, showVol, drawings, chartType, showSMC, smcMarkers, candles]);
+    // (getPY and panelStart already declared above, before RSI section)
+
+    // Helper to draw a simple sub-panel line
+    const drawSubLine = (vals: (number|null)[], yStart: number, pH: number, vMin: number, vMax: number, color: string, lw = 1.2) => {
+      const vRange = vMax - vMin || 1;
+      const toSubY = (v: number) => yStart + pH - ((v - vMin) / vRange) * pH;
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+      let started = false;
+      visibleCandles.forEach((_c, idx) => {
+        const v = vals[visibleStartIndex + idx];
+        if (v == null) return;
+        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        if (!started) { ctx.moveTo(x, toSubY(v)); started = true; } else { ctx.lineTo(x, toSubY(v)); }
+      });
+      ctx.stroke();
+    };
+
+    // 11. STOCHASTIC SUB-PANEL
+    if (showStoch && stochData.k.length) {
+      const yS = panelStart('stoch');
+      const pH = SUB_PANEL_H;
+      ctx.fillStyle = 'rgba(7,11,18,0.5)';
+      ctx.fillRect(0, yS, chartW, pH);
+      ctx.strokeStyle = 'rgba(99,118,175,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(chartW, yS); ctx.stroke();
+      // Overbought/oversold zones
+      ctx.fillStyle = 'rgba(239,68,68,0.06)';
+      ctx.fillRect(0, yS, chartW, pH * 0.2); // 80-100
+      ctx.fillStyle = 'rgba(34,197,94,0.06)';
+      ctx.fillRect(0, yS + pH * 0.8, chartW, pH * 0.2); // 0-20
+      // Reference lines
+      ctx.strokeStyle = 'rgba(239,68,68,0.3)'; ctx.lineWidth = 0.7; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(0, yS + pH * 0.2); ctx.lineTo(chartW, yS + pH * 0.2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(34,197,94,0.3)';
+      ctx.beginPath(); ctx.moveTo(0, yS + pH * 0.8); ctx.lineTo(chartW, yS + pH * 0.8); ctx.stroke();
+      ctx.setLineDash([]);
+      drawSubLine(stochData.k, yS, pH, 0, 100, '#a3e635', 1.3); // %K lime
+      drawSubLine(stochData.d, yS, pH, 0, 100, '#fb923c', 1.1); // %D orange
+      const curK = stochData.k[visibleStartIndex + visibleCandles.length - 1];
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 9px monospace';
+      ctx.fillText(`Stoch(14,3) K:${curK?.toFixed(1) ?? '-'}`, 8, yS + 11);
+    }
+
+    // 12. ADX SUB-PANEL
+    if (showADX && adxData.adx.length) {
+      const yS = panelStart('adx');
+      const pH = SUB_PANEL_H;
+      ctx.fillStyle = 'rgba(7,11,18,0.5)';
+      ctx.fillRect(0, yS, chartW, pH);
+      ctx.strokeStyle = 'rgba(99,118,175,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(chartW, yS); ctx.stroke();
+      // ADX 25 threshold
+      const toAdxY = (v: number) => yS + pH - (v / 100) * pH;
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(0, toAdxY(25)); ctx.lineTo(chartW, toAdxY(25)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.font = '8px monospace';
+      ctx.fillText('25', 2, toAdxY(25) - 2);
+      drawSubLine(adxData.adx, yS, pH, 0, 100, '#f8fafc', 1.5);   // ADX white
+      drawSubLine(adxData.diPlus, yS, pH, 0, 100, '#22c55e', 1.1); // +DI green
+      drawSubLine(adxData.diMinus, yS, pH, 0, 100, '#ef4444', 1.1); // -DI red
+      const curAdx = adxData.adx[visibleStartIndex + visibleCandles.length - 1];
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 9px monospace';
+      ctx.fillText(`ADX(14): ${curAdx?.toFixed(1) ?? '-'}`, 8, yS + 11);
+    }
+
+    // 13. OBV SUB-PANEL
+    if (showOBV && obvValues.length) {
+      const yS = panelStart('obv');
+      const pH = SUB_PANEL_H;
+      const obvSlice = obvValues.slice(visibleStartIndex, visibleEndIndex) as number[];
+      const obvMin = Math.min(...obvSlice.filter(v => v != null));
+      const obvMax = Math.max(...obvSlice.filter(v => v != null));
+      const obvRange = obvMax - obvMin || 1;
+      ctx.fillStyle = 'rgba(7,11,18,0.5)';
+      ctx.fillRect(0, yS, chartW, pH);
+      ctx.strokeStyle = 'rgba(99,118,175,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(chartW, yS); ctx.stroke();
+      drawSubLine(obvValues, yS, pH, obvMin, obvMax, '#38bdf8', 1.3);
+      // Fill under OBV line
+      ctx.fillStyle = 'rgba(56,189,248,0.08)';
+      ctx.beginPath();
+      let firstX2 = -1;
+      visibleCandles.forEach((_c, idx) => {
+        const v = obvValues[visibleStartIndex + idx] as number;
+        if (v == null) return;
+        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const y2 = yS + pH - ((v - obvMin) / obvRange) * pH;
+        if (firstX2 < 0) { ctx.moveTo(x, yS + pH); ctx.lineTo(x, y2); firstX2 = x; } else { ctx.lineTo(x, y2); }
+      });
+      if (firstX2 >= 0) { ctx.lineTo(chartW - step/2, yS + pH); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 9px monospace';
+      ctx.fillText('OBV', 8, yS + 11);
+    }
+
+    // 14. WILLIAMS %R SUB-PANEL
+    if (showWilliamsR && wrValues.length) {
+      const yS = panelStart('wr');
+      const pH = SUB_PANEL_H;
+      ctx.fillStyle = 'rgba(7,11,18,0.5)';
+      ctx.fillRect(0, yS, chartW, pH);
+      ctx.strokeStyle = 'rgba(99,118,175,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(chartW, yS); ctx.stroke();
+      const toWrY = (v: number) => yS + ((v + 100) / 100) * pH;
+      // Overbought (-20) / oversold (-80)
+      [[-20, 'rgba(239,68,68,0.3)'], [-80, 'rgba(34,197,94,0.3)']].forEach(([lvl, col]) => {
+        ctx.strokeStyle = col as string; ctx.setLineDash([3,3]); ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(0, toWrY(lvl as number)); ctx.lineTo(chartW, toWrY(lvl as number)); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      drawSubLine(wrValues, yS, pH, -100, 0, '#c084fc', 1.3);
+      const curWr = wrValues[visibleStartIndex + visibleCandles.length - 1];
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 9px monospace';
+      ctx.fillText(`Williams %R(14): ${curWr?.toFixed(1) ?? '-'}`, 8, yS + 11);
+    }
+
+    // 15. MOMENTUM / AO SUB-PANEL
+    if ((showMomentum || showAO) && (momentumValues.length || aoValues.length)) {
+      const yS = panelStart('mom');
+      const pH = SUB_PANEL_H;
+      ctx.fillStyle = 'rgba(7,11,18,0.5)';
+      ctx.fillRect(0, yS, chartW, pH);
+      ctx.strokeStyle = 'rgba(99,118,175,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(chartW, yS); ctx.stroke();
+      const vals = showMomentum ? momentumValues : aoValues;
+      const slice = vals.slice(visibleStartIndex, visibleEndIndex).filter((v): v is number => v != null);
+      if (slice.length) {
+        const vMin = Math.min(...slice), vMax = Math.max(...slice);
+        const absMax = Math.max(Math.abs(vMin), Math.abs(vMax)) || 1;
+        // Zero line
+        const zeroY = yS + pH / 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(chartW, zeroY); ctx.stroke();
+        // Histogram
+        visibleCandles.forEach((_c, idx) => {
+          const v = vals[visibleStartIndex + idx];
+          if (v == null) return;
+          const x = chartW - (visibleCandles.length - idx) * step;
+          const barH = (Math.abs(v) / absMax) * (pH / 2);
+          const barY = v >= 0 ? zeroY - barH : zeroY;
+          ctx.fillStyle = v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
+          ctx.fillRect(x + 1, barY, Math.max(1, candleW - 2), barH);
+        });
+        ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 9px monospace';
+        ctx.fillText(showMomentum ? 'Momentum(10)' : 'Awesome Osc', 8, yS + 11);
+      }
+    }
+
+    // ── GENERIC SUB-PANEL HELPER ─────────────────────────────────────────────
+    const renderSPBg = (yS: number) => {
+      ctx.fillStyle='rgba(7,11,18,0.5)'; ctx.fillRect(0,yS,chartW,SUB_PANEL_H);
+      ctx.strokeStyle='rgba(99,118,175,0.15)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,yS); ctx.lineTo(chartW,yS); ctx.stroke();
+    };
+    const drawSPLine = (vals:(number|null)[],yS:number,vMin:number,vMax:number,col:string,lw=1.2) => {
+      const vR=vMax-vMin||1; const toSY=(v:number)=>yS+SUB_PANEL_H-((v-vMin)/vR)*SUB_PANEL_H;
+      ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.beginPath(); let s=false;
+      visibleCandles.forEach((_,idx)=>{ const v=vals[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step+candleW/2; if(!s){ctx.moveTo(x,toSY(v));s=true;}else ctx.lineTo(x,toSY(v)); }); ctx.stroke();
+    };
+    const spLabel = (yS:number,txt:string) => { ctx.fillStyle='#94a3b8'; ctx.font='bold 9px monospace'; ctx.fillText(txt,8,yS+11); };
+    const spRefLine = (yS:number,val:number,vMin:number,vMax:number,col:string) => {
+      const vR=vMax-vMin||1; const y=yS+SUB_PANEL_H-((val-vMin)/vR)*SUB_PANEL_H;
+      ctx.strokeStyle=col; ctx.lineWidth=0.7; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(chartW,y); ctx.stroke(); ctx.setLineDash([]);
+    };
+
+    // 16. STOCHRSI
+    if (showStochRSI && stochRSIData) {
+      const yS=getPY('stochrsi'); renderSPBg(yS);
+      spRefLine(yS,80,0,100,'rgba(239,68,68,0.4)'); spRefLine(yS,20,0,100,'rgba(34,197,94,0.4)');
+      drawSPLine(stochRSIData.k,yS,0,100,'#fb923c',1.3);
+      drawSPLine(stochRSIData.d,yS,0,100,'#38bdf8',1.1);
+      const curK=stochRSIData.k[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`StochRSI K:${curK?.toFixed(1)??'-'}`);
+    }
+
+    // 17. MFI
+    if (showMFI && mfiValues.length) {
+      const yS=getPY('mfi'); renderSPBg(yS);
+      spRefLine(yS,80,0,100,'rgba(239,68,68,0.4)'); spRefLine(yS,20,0,100,'rgba(34,197,94,0.4)');
+      drawSPLine(mfiValues,yS,0,100,'#38bdf8',1.3);
+      const cur=mfiValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`MFI(14): ${cur?.toFixed(1)??'-'}`);
+    }
+
+    // 18. CMF
+    if (showCMF && cmfValues.length) {
+      const yS=getPY('cmf'); renderSPBg(yS);
+      const zY=yS+SUB_PANEL_H/2;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      visibleCandles.forEach((_,idx)=>{ const v=cmfValues[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step; const bH=Math.abs(v)*(SUB_PANEL_H/2); const bY=v>=0?zY-bH:zY; ctx.fillStyle=v>=0?'rgba(74,222,128,0.7)':'rgba(248,113,113,0.7)'; ctx.fillRect(x+1,bY,Math.max(1,candleW-1),bH); });
+      spLabel(yS,'CMF(20)');
+    }
+
+    // 19. AROON
+    if (showAroon && aroonData) {
+      const yS=getPY('aroon'); renderSPBg(yS);
+      spRefLine(yS,50,0,100,'rgba(255,255,255,0.15)');
+      drawSPLine(aroonData.aroonUp,yS,0,100,'#34d399',1.3);
+      drawSPLine(aroonData.aroonDown,yS,0,100,'#f87171',1.3);
+      const cur=aroonData.aroonUp[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`Aroon(25) Up:${cur?.toFixed(0)??'-'}`);
+    }
+
+    // 20. CMO
+    if (showCMO && cmoValues.length) {
+      const yS=getPY('cmo'); renderSPBg(yS);
+      spRefLine(yS,50,-100,100,'rgba(239,68,68,0.3)'); spRefLine(yS,-50,-100,100,'rgba(34,197,94,0.3)'); spRefLine(yS,0,-100,100,'rgba(255,255,255,0.15)');
+      drawSPLine(cmoValues,yS,-100,100,'#fb7185',1.3);
+      const cur=cmoValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`CMO(14): ${cur?.toFixed(1)??'-'}`);
+    }
+
+    // 21. PPO
+    if (showPPO && ppoData) {
+      const yS=getPY('ppo'); renderSPBg(yS);
+      const sl=ppoData.ppo.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const absMax=sl.length?Math.max(...sl.map(Math.abs))*1.2||0.01:0.01;
+      const zY=yS+SUB_PANEL_H/2;
+      visibleCandles.forEach((_,idx)=>{ const v=ppoData.hist[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step; const bH=Math.abs(v)/absMax*(SUB_PANEL_H/2); const bY=v>=0?zY-bH:zY; ctx.fillStyle=v>=0?'rgba(96,165,250,0.5)':'rgba(248,113,113,0.5)'; ctx.fillRect(x+1,bY,Math.max(1,candleW-1),bH); });
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      drawSPLine(ppoData.ppo,yS,-absMax,absMax,'#60a5fa',1.3);
+      drawSPLine(ppoData.signal,yS,-absMax,absMax,'#fb923c',1.1);
+      spLabel(yS,'PPO(12,26)');
+    }
+
+    // 22. BB %B
+    if (showBBPctB && bbPctBValues.length) {
+      const yS=getPY('bbpctb'); renderSPBg(yS);
+      spRefLine(yS,1,0,1.2,'rgba(239,68,68,0.3)'); spRefLine(yS,0,0,1.2,'rgba(34,197,94,0.3)'); spRefLine(yS,0.5,0,1.2,'rgba(255,255,255,0.15)');
+      drawSPLine(bbPctBValues,yS,0,1.2,'#a78bfa',1.3);
+      const cur=bbPctBValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`BB %B: ${cur?.toFixed(2)??'-'}`);
+    }
+
+    // 23. BB WIDTH
+    if (showBBWidth && bbWidthValues.length) {
+      const sl=bbWidthValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const vMax=sl.length?Math.max(...sl)*1.1:1;
+      const yS=getPY('bbwidth'); renderSPBg(yS);
+      drawSPLine(bbWidthValues,yS,0,vMax,'#6ee7b7',1.3);
+      spLabel(yS,'BB Width');
+    }
+
+    // 24. VORTEX
+    if (showVortex && vortexData) {
+      const yS=getPY('vortex'); renderSPBg(yS);
+      spRefLine(yS,1,0,2.5,'rgba(255,255,255,0.15)');
+      drawSPLine(vortexData.viPlus,yS,0,2.5,'#4ade80',1.3);
+      drawSPLine(vortexData.viMinus,yS,0,2.5,'#f87171',1.3);
+      spLabel(yS,'Vortex(14)');
+    }
+
+    // 25. ELDER RAY
+    if (showElderRay && elderRayData) {
+      const yS=getPY('elderray'); renderSPBg(yS);
+      const sl=[...elderRayData.bullPower,...elderRayData.bearPower].filter((v):v is number=>v!=null);
+      const absMax=sl.length?Math.max(...sl.map(Math.abs))*1.2||0.001:0.001;
+      const zY=yS+SUB_PANEL_H/2;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      visibleCandles.forEach((_,idx)=>{ const b=elderRayData.bullPower[visibleStartIndex+idx]; if(b==null)return; const x=chartW-(visibleCandles.length-idx)*step; const bH=Math.abs(b)/absMax*(SUB_PANEL_H/2); const bY=b>=0?zY-bH:zY; ctx.fillStyle='rgba(74,222,128,0.6)'; ctx.fillRect(x+1,bY,Math.max(1,candleW-1),bH); });
+      visibleCandles.forEach((_,idx)=>{ const b=elderRayData.bearPower[visibleStartIndex+idx]; if(b==null)return; const x=chartW-(visibleCandles.length-idx)*step; const bH=Math.abs(b)/absMax*(SUB_PANEL_H/2); const bY=b>=0?zY-bH:zY; ctx.fillStyle='rgba(248,113,113,0.6)'; ctx.fillRect(x+1,bY,Math.max(1,candleW-1),bH); });
+      spLabel(yS,'Elder Ray');
+    }
+
+    // 26. NORM RSI
+    if (showNormRSI && normRSIValues.length) {
+      const yS=getPY('normrsi'); renderSPBg(yS);
+      spRefLine(yS,70,-100,100,'rgba(239,68,68,0.3)'); spRefLine(yS,-70,-100,100,'rgba(34,197,94,0.3)'); spRefLine(yS,0,-100,100,'rgba(255,255,255,0.15)');
+      drawSPLine(normRSIValues,yS,-100,100,'#c084fc',1.3);
+      const cur=normRSIValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`NormRSI: ${cur?.toFixed(1)??'-'}`);
+    }
+
+    // 27. KST
+    if (showKST && kstData) {
+      const yS=getPY('kst'); renderSPBg(yS);
+      const sl=[...kstData.kst,...kstData.signal].filter((v):v is number=>v!=null);
+      const absMax=sl.length?Math.max(...sl.map(Math.abs))*1.2||1:1;
+      const zY=yS+SUB_PANEL_H/2;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      drawSPLine(kstData.kst,yS,-absMax,absMax,'#fbbf24',1.3);
+      drawSPLine(kstData.signal,yS,-absMax,absMax,'#f87171',1.1);
+      spLabel(yS,'KST');
+    }
+
+    // 28. QQE
+    if (showQQE && qqeData) {
+      const yS=getPY('qqe'); renderSPBg(yS);
+      const sl=[...qqeData.qqe,...qqeData.signal].filter((v):v is number=>v!=null);
+      const absMax=sl.length?Math.max(...sl.map(Math.abs))*1.2||1:1;
+      const zY=yS+SUB_PANEL_H/2;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      drawSPLine(qqeData.qqe,yS,-absMax,absMax,'#34d399',1.3);
+      drawSPLine(qqeData.signal,yS,-absMax,absMax,'#fb923c',1.1);
+      spLabel(yS,'QQE');
+    }
+
+    // 29. A/D LINE
+    if (showADLine && adLineValues.length) {
+      const sl=adLineValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const vMin=sl.length?Math.min(...sl):0; const vMax=sl.length?Math.max(...sl):1;
+      const yS=getPY('adline'); renderSPBg(yS);
+      drawSPLine(adLineValues,yS,vMin,vMax,'#34d399',1.3);
+      spLabel(yS,'A/D Line');
+    }
+
+    // 30. FORCE INDEX
+    if (showForceIndex && forceIndexValues.length) {
+      const sl=forceIndexValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const absMax=sl.length?Math.max(...sl.map(Math.abs))*1.2||1:1;
+      const yS=getPY('forceindex'); renderSPBg(yS);
+      const zY=yS+SUB_PANEL_H/2;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(0,zY); ctx.lineTo(chartW,zY); ctx.stroke();
+      visibleCandles.forEach((_,idx)=>{ const v=forceIndexValues[visibleStartIndex+idx]; if(v==null)return; const x=chartW-(visibleCandles.length-idx)*step; const bH=Math.abs(v)/absMax*(SUB_PANEL_H/2); const bY=v>=0?zY-bH:zY; ctx.fillStyle=v>=0?'rgba(251,146,60,0.7)':'rgba(251,146,60,0.3)'; ctx.fillRect(x+1,bY,Math.max(1,candleW-1),bH); });
+      spLabel(yS,'Force Index(13)');
+    }
+
+    // 31. VOLUME RSI
+    if (showVolumeRSI && volumeRSIValues.length) {
+      const yS=getPY('volumersi'); renderSPBg(yS);
+      spRefLine(yS,70,0,100,'rgba(239,68,68,0.3)'); spRefLine(yS,30,0,100,'rgba(34,197,94,0.3)'); spRefLine(yS,50,0,100,'rgba(255,255,255,0.15)');
+      drawSPLine(volumeRSIValues,yS,0,100,'#a78bfa',1.3);
+      const cur=volumeRSIValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`Vol RSI: ${cur?.toFixed(1)??'-'}`);
+    }
+
+    // 32. HISTORICAL VOLATILITY
+    if (showHV && hvValues.length) {
+      const sl=hvValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const vMax=sl.length?Math.max(...sl)*1.1:100;
+      const yS=getPY('hv'); renderSPBg(yS);
+      drawSPLine(hvValues,yS,0,vMax,'#f97316',1.3);
+      const cur=hvValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`HV(20): ${cur?.toFixed(1)??'-'}%`);
+    }
+
+    // 33. ATR %
+    if (showATRPct && atrPctValues.length) {
+      const sl=atrPctValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const vMax=sl.length?Math.max(...sl)*1.1:1;
+      const yS=getPY('atrpct'); renderSPBg(yS);
+      drawSPLine(atrPctValues,yS,0,vMax,'#e879f9',1.3);
+      const cur=atrPctValues[visibleStartIndex+visibleCandles.length-1];
+      spLabel(yS,`ATR%(14): ${cur?.toFixed(3)??'-'}`);
+    }
+
+    // 34. ULCER INDEX
+    if (showUlcerIndex && ulcerValues.length) {
+      const sl=ulcerValues.slice(visibleStartIndex,visibleEndIndex).filter((v):v is number=>v!=null);
+      const vMax=sl.length?Math.max(...sl)*1.1:10;
+      const yS=getPY('ulcerindex'); renderSPBg(yS);
+      drawSPLine(ulcerValues,yS,0,vMax,'#fb7185',1.3);
+      spLabel(yS,'Ulcer Index(14)');
+    }
+
+  }, [charLayout, visibleCandles, visibleStartIndex, pair, activeIndicatorsKey, drawings, chartType,
+      showSMC, smcData, candles,
+      ma20Line, ma50Line, ema9Line, ema21Line, ema50Line, ema200Line,
+      bbBands, superTrendData, vwapLine, cciValues, patternMarkers,
+      stochData, sarValues, adxData, wrValues, pivotPoints, keltnerData, obvValues, momentumValues, aoValues,
+      demaLine, temaLine, hmaLine, smmaLine, zlemaLine, mcginleyLine, lrLineLine, lrChannelData,
+      donchianData, ichimokuData, alligatorData, chandelierData, atrBandsData, fractalData, vemaLine,
+      stochRSIData, mfiValues, cmfValues, aroonData, cmoValues, ppoData, bbPctBValues, bbWidthValues,
+      vortexData, elderRayData, normRSIValues, kstData, qqeData,
+      adLineValues, forceIndexValues, volumeRSIValues, hvValues, atrPctValues, ulcerValues]);
 
   // EFFECT TO HANDLE INTERACTIVE CROSSHAIR AND OVERLAY
   useEffect(() => {
@@ -1213,12 +2179,12 @@ export default function ChartingTool({
         // Step 2: Create complete complex lines (Trend, Fib channels, Rectangles)
         const newTool: DrawingTool = {
           id: `draw-${Date.now()}`,
-          type: drawingType,
+          type: drawingType as DrawingTool['type'],
           points: [
             { index: drawProgress.index, price: drawProgress.price },
             { index: logical.index, price: logical.price },
           ],
-          color: drawingType === 'trend' ? '#26c6da' : drawingType === 'fib' ? '#ab47bc' : '#ff7043',
+          color: drawingType === 'trend' ? '#26c6da' : drawingType === 'fib' ? '#ab47bc' : drawingType === 'ray' ? '#22d3ee' : drawingType === 'channel' ? '#a78bfa' : '#ff7043',
           label: `${drawingType.toUpperCase()} - Interactive`,
         };
         setDrawings((prev) => [...prev, newTool]);
@@ -1491,84 +2457,35 @@ export default function ChartingTool({
 
         <div className="h-4 w-px bg-gray-800 shrink-0" />
 
-        {/* Dynamic Overlay Checkboxes */}
-        <div className="flex items-center space-x-1.5 shrink-0 select-none">
-          <button
-            onClick={() => setShowMA20(!showMA20)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition ${
-              showMA20
-                ? 'bg-cyan-950/60 text-[#00d4ff] border-cyan-700/40'
-                : 'text-gray-400 border-transparent hover:bg-[#1b253b]'
-            }`}
-          >
-            MA 20
-          </button>
-          <button
-            onClick={() => setShowMA50(!showMA50)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition ${
-              showMA50
-                ? 'bg-amber-950/60 text-[#ffc107] border-amber-700/40'
-                : 'text-gray-400 border-transparent hover:bg-[#1b253b]'
-            }`}
-          >
-            MA 50
-          </button>
-          <button
-            onClick={() => setShowEMA9(!showEMA9)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition ${
-              showEMA9
-                ? 'bg-pink-950/60 text-[#ec4899] border-pink-700/40'
-                : 'text-gray-400 border-transparent hover:bg-[#1b253b]'
-            }`}
-          >
-            EMA 9
-          </button>
-          <button
-            onClick={() => setShowBB(!showBB)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition ${
-              showBB
-                ? 'bg-purple-950/60 text-[#ab47bc] border-purple-700/40'
-                : 'text-gray-400 border-transparent hover:bg-[#1b253b]'
-            }`}
-          >
-            Bands
-          </button>
-          <button
-            onClick={() => setShowVol(!showVol)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition ${
-              showVol
-                ? 'bg-emerald-950/60 text-[#00e676] border-emerald-700/40'
-                : 'text-gray-400 border-transparent hover:bg-[#1b253b]'
-            }`}
-          >
-            Vol
-          </button>
-        </div>
+        {/* ⊞ Indicators button — opens TradingView-style indicator panel */}
+        <button
+          onClick={() => setShowIndicatorPanel(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold border transition shrink-0 ${
+            showIndicatorPanel
+              ? 'bg-blue-950/70 text-blue-300 border-blue-700/50'
+              : 'text-gray-300 border-gray-700/50 hover:bg-[#1b253b] hover:text-white'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Indicators ({activeIndicators.size})</span>
+        </button>
 
-        <div className="h-4 w-px bg-gray-800 shrink-0" />
-
-        {/* Sub-panels triggers */}
-        <div className="flex items-center space-x-1.5 shrink-0">
-          <button
-            onClick={() => setShowRSI(!showRSI)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold flex items-center transition ${
-              showRSI
-                ? 'bg-indigo-950/60 text-indigo-400 border border-indigo-800/40'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/40'
-            }`}
-          >
-            RSI
-          </button>
-          <button
-            onClick={() => setShowMACD(!showMACD)}
-            className={`px-2.5 py-1 rounded text-[10px] font-semibold flex items-center transition ${
-              showMACD
-                ? 'bg-[#311b92]/30 text-[#ab47bc] border border-fuchsia-800/30'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/40'
-            }`}
-          >
-            MACD
-          </button>
+        {/* Quick-access active indicator chips */}
+        <div className="flex items-center space-x-1 shrink-0 select-none overflow-x-auto max-w-xs">
+          {[...activeIndicators].filter(id => {
+            const def = INDICATOR_REGISTRY.find(r => r.id === id);
+            return def && def.renderType === 'overlay' && !['smc','patterns','vol'].includes(id);
+          }).slice(0,6).map(id => {
+            const def = INDICATOR_REGISTRY.find(r => r.id === id)!;
+            return (
+              <button key={id} onClick={() => toggleIndicator(id)}
+                className="px-1.5 py-0.5 rounded text-[9px] font-semibold border flex items-center gap-1"
+                style={{ borderColor: def.color+'60', color: def.color, background: def.color+'15' }}>
+                {def.label}
+                <X className="w-2.5 h-2.5 opacity-70" />
+              </button>
+            );
+          })}
         </div>
 
         {/* Zoom Out & reset visual anchors */}
@@ -1697,6 +2614,85 @@ export default function ChartingTool({
               <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Block</span>
               {drawingType === 'rectangle' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-pink-400 rounded-full" />}
             </button>
+
+            {/* Ray Tool Button */}
+            <button
+              onClick={() => setDrawingType('ray')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${
+                drawingType === 'ray'
+                  ? 'bg-cyan-950/80 text-[#22d3ee] border-cyan-800/60 shadow-md font-extrabold'
+                  : 'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'
+              }`}
+              title="Horizontal Ray — extends right from anchor"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="3" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+                <line x1="4.5" y1="8" x2="14" y2="8"/>
+                <polyline points="11,5 14,8 11,11"/>
+              </svg>
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Ray</span>
+              {drawingType === 'ray' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-cyan-400 rounded-full" />}
+            </button>
+
+            {/* Channel Tool Button */}
+            <button
+              onClick={() => setDrawingType('channel')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${
+                drawingType === 'channel'
+                  ? 'bg-violet-950/80 text-[#a78bfa] border-violet-800/60 shadow-md font-extrabold'
+                  : 'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'
+              }`}
+              title="Price Channel — parallel trendlines"
+            >
+              <Layers className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Channel</span>
+              {drawingType === 'channel' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-violet-400 rounded-full" />}
+            </button>
+
+            {/* Extended Line */}
+            <button onClick={() => setDrawingType('extline')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${drawingType==='extline'?'bg-cyan-950/80 text-[#67e8f9] border-cyan-800/60 shadow-md':'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'}`}
+              title="Extended Line — infinite both directions">
+              <ArrowRight className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">ExtLine</span>
+              {drawingType==='extline'&&<span className="absolute top-1 right-1 w-1.5 h-1.5 bg-cyan-400 rounded-full"/>}
+            </button>
+
+            {/* Regression Channel */}
+            <button onClick={() => setDrawingType('regression')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${drawingType==='regression'?'bg-indigo-950/80 text-indigo-300 border-indigo-800/60 shadow-md':'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'}`}
+              title="Regression Channel">
+              <TrendingDown className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Regress</span>
+              {drawingType==='regression'&&<span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-400 rounded-full"/>}
+            </button>
+
+            {/* Price Range */}
+            <button onClick={() => setDrawingType('pricerange')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${drawingType==='pricerange'?'bg-yellow-950/80 text-yellow-300 border-yellow-800/60 shadow-md':'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'}`}
+              title="Price Range — shows price delta">
+              <ArrowUpDown className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">PRange</span>
+              {drawingType==='pricerange'&&<span className="absolute top-1 right-1 w-1.5 h-1.5 bg-yellow-400 rounded-full"/>}
+            </button>
+
+            {/* Long Position */}
+            <button onClick={() => setDrawingType('longpos')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${drawingType==='longpos'?'bg-green-950/80 text-green-300 border-green-800/60 shadow-md':'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'}`}
+              title="Long Position — Entry/TP box">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Long</span>
+              {drawingType==='longpos'&&<span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-400 rounded-full"/>}
+            </button>
+
+            {/* Short Position */}
+            <button onClick={() => setDrawingType('shortpos')}
+              className={`w-12 h-12 rounded flex flex-col items-center justify-center transition p-1 relative border ${drawingType==='shortpos'?'bg-red-950/80 text-red-300 border-red-800/60 shadow-md':'text-gray-400 border-transparent hover:text-white hover:bg-[#1b253b]/40'}`}
+              title="Short Position — Entry/SL box">
+              <TrendingDown className="w-4 h-4" />
+              <span className="text-[7.5px] tracking-tight mt-1 leading-none uppercase font-bold text-center">Short</span>
+              {drawingType==='shortpos'&&<span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-400 rounded-full"/>}
+            </button>
           </div>
 
           <div className="h-px bg-gray-800/60 w-11 shrink-0" />
@@ -1717,11 +2713,7 @@ export default function ChartingTool({
                 >
                   {/* Abbreviation for type */}
                   <span className="text-[7.5px] font-black text-gray-400 uppercase tracking-tighter">
-                    {d.type === 'trend' && 'Trend'}
-                    {d.type === 'horizontal' && 'H-Line'}
-                    {d.type === 'vertical' && 'V-Line'}
-                    {d.type === 'fib' && 'Fib'}
-                    {d.type === 'rectangle' && 'Block'}
+                    {({'trend':'Trend','horizontal':'H-Line','vertical':'V-Line','fib':'Fib','rectangle':'Block','ray':'Ray','channel':'Chan','extline':'ExtL','regression':'Regr','pricerange':'PΔ','daterange':'DΔ','longpos':'Long','shortpos':'Short','pitchfork':'Fork','fibext':'FibEx'} as Record<string,string>)[d.type] || d.type}
                   </span>
                   
                   {/* Object sequence label */}
@@ -1798,6 +2790,65 @@ export default function ChartingTool({
           </div>
         </div>
 
+        {/* INDICATOR PANEL — TradingView-style collapsible overlay */}
+        {showIndicatorPanel && (
+          <div className="absolute left-16 top-0 z-50 w-72 h-full bg-[#0e1321]/98 border-r border-[#1b253b] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-2 border-b border-[#1b253b] flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-1.5 bg-[#070b12] border border-[#1b253b] rounded px-2 py-1">
+                <Search className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                <input type="text" placeholder="Search indicators..." value={indicatorSearch}
+                  onChange={e => setIndicatorSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-[11px] text-white focus:outline-none placeholder-gray-500 min-w-0" />
+                {indicatorSearch && <button onClick={() => setIndicatorSearch('')}><X className="w-3 h-3 text-gray-400 hover:text-white" /></button>}
+              </div>
+              <button onClick={() => setShowIndicatorPanel(false)} className="text-gray-500 hover:text-white transition p-1 shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {IND_CATEGORIES.map(cat => {
+                const catInds = INDICATOR_REGISTRY.filter(r =>
+                  r.category === cat.id &&
+                  (indicatorSearch === '' || r.label.toLowerCase().includes(indicatorSearch.toLowerCase()) || r.id.includes(indicatorSearch.toLowerCase()))
+                );
+                if (catInds.length === 0) return null;
+                const isExpanded = expandedCategories.has(cat.id) || indicatorSearch !== '';
+                return (
+                  <div key={cat.id}>
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:text-white hover:bg-[#1b253b]/50 transition"
+                      onClick={() => toggleCategory(cat.id)}>
+                      <span>{cat.label} ({catInds.filter(r => activeIndicators.has(r.id)).length}/{catInds.length})</span>
+                      {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    </button>
+                    {isExpanded && (
+                      <div className="pb-1">
+                        {catInds.map(ind => (
+                          <div key={ind.id}
+                            className={`flex items-center px-3 py-1.5 cursor-pointer transition group ${activeIndicators.has(ind.id) ? 'bg-[#1b253b]/40' : 'hover:bg-[#1b253b]/20'}`}
+                            onClick={() => toggleIndicator(ind.id)}>
+                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center mr-2 flex-shrink-0 transition ${
+                              activeIndicators.has(ind.id) ? 'border-blue-500 bg-blue-500' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                              {activeIndicators.has(ind.id) && <span className="text-white text-[8px] font-black">✓</span>}
+                            </div>
+                            <span className={`text-[11px] flex-1 truncate ${activeIndicators.has(ind.id) ? 'text-white font-medium' : 'text-gray-400'}`}>{ind.label}</span>
+                            <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1" style={{ backgroundColor: ind.color }} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-2 border-t border-[#1b253b] flex justify-between items-center">
+              <span className="text-[9px] text-gray-500">{activeIndicators.size} active</span>
+              <button onClick={() => setActiveIndicators(new Set(['ma20','ma50','vol','patterns']))}
+                className="text-[9px] text-gray-500 hover:text-red-400 transition">Reset All</button>
+            </div>
+          </div>
+        )}
+
         {/* Viewport Charts Frame */}
         <div className="flex-1 h-full relative" id="chartsCanvasFrame">
           {drawingType !== 'none' && (
@@ -1809,6 +2860,13 @@ export default function ChartingTool({
                 {drawingType === 'vertical' && 'অঙ্কন মোড: যেকোনো ক্যান্ডেল স্লাইড বরাবর ক্লিক করুন।'}
                 {drawingType === 'fib' && 'Fibonacci মোড: সুয়িং হাই থেকে সুইং লো বরাবর ড্র্যাগিং সম্পন্ন করুন।'}
                 {drawingType === 'rectangle' && 'রেকট্যাঙ্গেল মোড: বায়ার বা সেলার ডিসিশন ব্লক হাইলাইট করতে ক্লিক-ড্র্যাগ করুন।'}
+                {drawingType === 'ray' && 'Ray মোড: যেকোনো বিন্দুতে ক্লিক করুন — ডানদিকে অসীম রেখা আঁকা হবে।'}
+                {drawingType === 'channel' && 'Channel: Click 2 points → parallel channel.'}
+                {drawingType === 'extline' && 'Extended Line: Click 2 points → extends infinitely both ways.'}
+                {drawingType === 'regression' && 'Regression Channel: Click 2 points → auto regression.'}
+                {drawingType === 'pricerange' && 'Price Range: Click 2 price levels → shows Δ price.'}
+                {drawingType === 'longpos' && 'Long Position: Click entry → click TP target.'}
+                {drawingType === 'shortpos' && 'Short Position: Click entry → click SL level.'}
               </span>
             </div>
           )}

@@ -17,6 +17,7 @@ export default function Navbar() {
   const navLinks = [
     { to: '/', label: t('home') },
     { to: '/dashboard', label: t('dashboard') },
+    { to: '/mt5-chart', label: 'MT5 Chart' },
     { to: '/forex', label: t('trade') },
     { to: '/portfolio', label: t('portfolio') },
     { to: '/ea-analytics', label: t('eaAnalytics') },

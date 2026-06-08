@@ -197,7 +197,7 @@ export default function App() {
         ws.onopen = () => {
           ws.send(JSON.stringify({
             action: 'subscribe',
-            params: { symbols: 'EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD' }
+            params: { symbols: 'EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/JPY,GBP/JPY,USD/CHF,EUR/CHF,NZD/USD,EUR/CAD,EUR/AUD' }
           }));
         };
         ws.onmessage = (e) => {

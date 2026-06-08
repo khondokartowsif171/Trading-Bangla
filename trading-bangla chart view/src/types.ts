@@ -52,10 +52,30 @@ export type ChartType = 'candle' | 'heikin' | 'bar' | 'line' | 'area' | 'hollow'
 
 export interface DrawingTool {
   id: string;
-  type: 'trend' | 'horizontal' | 'vertical' | 'fib' | 'rectangle';
-  points: { index: number; price: number }[]; // logical coordinates (candle index, price value)
+  type: 'trend' | 'horizontal' | 'vertical' | 'fib' | 'rectangle' | 'ray' | 'channel'
+      | 'extline' | 'pitchfork' | 'regression' | 'fibext' | 'pricerange' | 'daterange'
+      | 'longpos' | 'shortpos';
+  points: { index: number; price: number }[];
   color: string;
   label?: string;
+}
+
+export type IndicatorCategory = 'trend' | 'oscillator' | 'volume' | 'volatility' | 'smc';
+export type IndicatorRenderType = 'overlay' | 'subpanel';
+
+export interface IndicatorDef {
+  id: string;
+  label: string;
+  category: IndicatorCategory;
+  renderType: IndicatorRenderType;
+  defaultParams: Record<string, number>;
+  color: string;
+  description?: string;
+}
+
+export interface IndicatorParams {
+  [key: string]: number | string;
+  color?: string;
 }
 
 export interface AccountState {
