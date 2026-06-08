@@ -79,6 +79,18 @@ export default function TradePanel({
 
   const marginLevelPercent = account.usedMargin > 0 ? (account.equity / account.usedMargin) * 100 : 0;
 
+  // Stats derived from history
+  const winCount = history.filter(h => h.pnl > 0).length;
+  const winRate = history.length > 0 ? Math.round((winCount / history.length) * 100) : 0;
+  const netPnL = history.reduce((s, h) => s + h.pnl, 0);
+
+  // Pip distance helper
+  const pipDist = (priceStr: string) => {
+    const val = parseFloat(priceStr);
+    if (!val || !currentPrice || !pair?.pip) return null;
+    return Math.abs(Math.round((val - currentPrice) / pair.pip));
+  };
+
   // Quick preset SL and TP rates
   const setPresets = (type: 'conservative' | 'aggressive') => {
     const slPips = type === 'conservative' ? 20 : 50;
@@ -175,13 +187,23 @@ export default function TradePanel({
           <span className="text-gray-500 font-sans text-[9px] uppercase tracking-wider block">ফ্রি মার্জিন (Free Margin)</span>
           <span className="font-mono text-xs font-semibold text-emerald-400">${account.freeMargin.toFixed(2)}</span>
         </div>
-        <div className="col-span-2 flex items-center justify-between text-[10px] mt-1 bg-gray-950/40 p-1.5 rounded">
-          <span className="text-gray-500 font-bold uppercase tracking-wide flex items-center gap-1">
-            <Percent className="w-3 h-3" /> মার্জিন লেভেল %
-          </span>
-          <span className={`font-mono font-bold ${marginLevelPercent >= 100 || marginLevelPercent === 0 ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
-            {marginLevelPercent === 0 ? '0.00' : marginLevelPercent.toFixed(1)}%
-          </span>
+        <div className="col-span-2 mt-1 bg-gray-950/40 p-1.5 rounded space-y-1">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-500 font-bold uppercase tracking-wide flex items-center gap-1">
+              <Percent className="w-3 h-3" /> মার্জিন লেভেল %
+            </span>
+            <span className={`font-mono font-bold ${marginLevelPercent >= 200 || marginLevelPercent === 0 ? 'text-[#00e676]' : marginLevelPercent >= 100 ? 'text-[#ffc107]' : 'text-[#ff3d57]'}`}>
+              {marginLevelPercent === 0 ? '—' : marginLevelPercent.toFixed(0) + '%'}
+            </span>
+          </div>
+          {account.usedMargin > 0 && (
+            <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${marginLevelPercent >= 200 ? 'bg-[#00e676]' : marginLevelPercent >= 100 ? 'bg-[#ffc107]' : 'bg-[#ff3d57]'}`}
+                style={{ width: `${Math.min(marginLevelPercent / 5, 100)}%` }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -295,7 +317,10 @@ export default function TradePanel({
                 onChange={() => setUseSL(!useSL)}
                 className="rounded text-indigo-505 bg-gray-950 border-gray-800"
               />
-              <span className="font-bold">স্টপ লস ট্রিগার (Stop Loss - SL)</span>
+              <span className="font-bold">স্টপ লস (Stop Loss - SL)</span>
+              {useSL && slValue && pipDist(slValue) !== null && (
+                <span className="ml-auto text-[9px] text-[#ff3d57] font-mono font-bold">≈{pipDist(slValue)} pips</span>
+              )}
             </label>
             {useSL && (
               <input
@@ -304,7 +329,7 @@ export default function TradePanel({
                 placeholder={`যেমন: ${currentPrice.toFixed(pair.dec)}`}
                 value={slValue}
                 onChange={(e) => setSlValue(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#ff3d57]"
+                className="w-full bg-gray-950 border border-[#ff3d57]/40 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#ff3d57]"
               />
             )}
           </div>
@@ -318,7 +343,10 @@ export default function TradePanel({
                 onChange={() => setUseTP(!useTP)}
                 className="rounded text-indigo-505 bg-gray-950 border-gray-800"
               />
-              <span className="font-bold">টেক প্রফিট টার্গেট (Take Profit - TP)</span>
+              <span className="font-bold">টেক প্রফিট (Take Profit - TP)</span>
+              {useTP && tpValue && pipDist(tpValue) !== null && (
+                <span className="ml-auto text-[9px] text-[#00e676] font-mono font-bold">≈{pipDist(tpValue)} pips</span>
+              )}
             </label>
             {useTP && (
               <input
@@ -327,7 +355,7 @@ export default function TradePanel({
                 placeholder={`যেমন: ${currentPrice.toFixed(pair.dec)}`}
                 value={tpValue}
                 onChange={(e) => setTpValue(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#00e676]"
+                className="w-full bg-gray-950 border border-[#00e676]/40 rounded px-2.5 py-1.5 font-mono text-xs text-gray-200 focus:outline-none focus:border-[#00e676]"
               />
             )}
           </div>
@@ -336,14 +364,19 @@ export default function TradePanel({
         {/* CORE SEND TRANSACTION TRIGGER BUTTON */}
         <button
           onClick={handlePlaceOrder}
-          className={`w-full py-2.5 rounded-lg text-xs font-bold font-sans uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow ${
+          className={`w-full py-3 rounded-lg font-black font-sans uppercase tracking-widest transition-all active:scale-95 shadow-lg flex flex-col items-center justify-center gap-0.5 ${
             tradeType === 'BUY'
-              ? 'bg-[#00e676] hover:bg-emerald-400 text-black'
-              : 'bg-[#ff3d57] hover:bg-red-400 text-white'
+              ? 'bg-[#00e676] hover:bg-emerald-400 text-black shadow-[#00e676]/20'
+              : 'bg-[#ff3d57] hover:bg-red-400 text-white shadow-[#ff3d57]/20'
           }`}
         >
-          <PlaySquare className="w-4 h-4 shrink-0" />
-          <span>ডেমো ট্রেড সফল করুন ({tradeType})</span>
+          <div className="flex items-center gap-1.5 text-sm">
+            <PlaySquare className="w-4 h-4 shrink-0" />
+            <span>{tradeType === 'BUY' ? '▲ BUY / LONG' : '▼ SELL / SHORT'}</span>
+          </div>
+          <span className="text-[10px] font-mono opacity-75 tracking-widest">
+            @ {currentPrice.toFixed(pair?.dec || 5)} · {lots} lot · 1:{leverage}
+          </span>
         </button>
       </div>
 
@@ -457,13 +490,30 @@ export default function TradePanel({
               </div>
             ) : (
               <div className="space-y-1.5">
+                {/* Win Rate + Net P/L stats */}
+                <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  <div className="bg-gray-950/60 rounded p-1.5 text-center border border-gray-800/40">
+                    <div className="text-[8px] text-gray-500 uppercase font-bold">Trades</div>
+                    <div className="text-xs font-mono font-bold text-gray-200">{history.length}</div>
+                  </div>
+                  <div className="bg-gray-950/60 rounded p-1.5 text-center border border-gray-800/40">
+                    <div className="text-[8px] text-gray-500 uppercase font-bold">Win Rate</div>
+                    <div className={`text-xs font-mono font-bold ${winRate >= 50 ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>{winRate}%</div>
+                  </div>
+                  <div className="bg-gray-950/60 rounded p-1.5 text-center border border-gray-800/40">
+                    <div className="text-[8px] text-gray-500 uppercase font-bold">Net P/L</div>
+                    <div className={`text-xs font-mono font-bold ${netPnL >= 0 ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
+                      {netPnL >= 0 ? '+' : ''}${netPnL.toFixed(0)}
+                    </div>
+                  </div>
+                </div>
                 <div className="flex justify-between px-1 mb-1.5">
                   <span className="text-[9px] font-sans text-gray-500 font-bold uppercase tracking-wider">লেনদেনের রেকর্ড</span>
                   <button
                     onClick={onResetAccount}
                     className="text-[9px] font-sans text-[#ff3d57] underline hover:no-underline"
                   >
-                    হিস্ট্রি রিসেট করুন
+                    রিসেট করুন
                   </button>
                 </div>
                 {history.map((hist) => {

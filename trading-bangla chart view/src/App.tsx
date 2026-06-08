@@ -536,12 +536,12 @@ export default function App() {
           </div>
 
           {/* Integrated live account indices */}
-          <div className="hidden lg:flex items-center space-x-8">
+          <div className="hidden lg:flex items-center space-x-6">
             <div className="flex flex-col text-right">
               <span className="text-[8.5px] uppercase tracking-wider text-white/40 font-bold font-sans">BALANCE (ব্যালেন্স)</span>
               <span className="text-xs md:text-sm font-mono font-black text-white">${account.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
-            
+
             <div className="flex flex-col text-right">
               <span className="text-[8.5px] uppercase tracking-wider text-white/40 font-bold font-sans">EQUITY (ইকুইটি)</span>
               <span className="text-xs md:text-sm font-mono font-black text-[#d085ff]">${account.equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -553,6 +553,15 @@ export default function App() {
                 {account.floatingPnl >= 0 ? '+' : ''}${account.floatingPnl.toFixed(2)}
               </span>
             </div>
+
+            {history.length > 0 && (
+              <div className="flex flex-col text-right border-l border-white/10 pl-6">
+                <span className="text-[8.5px] uppercase tracking-wider text-white/40 font-bold font-sans">WIN RATE</span>
+                <span className={`text-xs md:text-sm font-mono font-black ${Math.round((history.filter(h => h.pnl > 0).length / history.length) * 100) >= 50 ? 'text-[#00FF41]' : 'text-[#FF3131]'}`}>
+                  {Math.round((history.filter(h => h.pnl > 0).length / history.length) * 100)}%
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Settings & Layout panel controls */}
