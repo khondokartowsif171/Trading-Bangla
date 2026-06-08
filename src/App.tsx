@@ -46,6 +46,7 @@ import CrmDashboard from '@/pages/CrmDashboard';
 import BlogPage from '@/pages/BlogPage';
 import BlogPost from '@/pages/BlogPost';
 import MT5ChartPage from '@/pages/MT5ChartPage';
+import MT5TradingPage from '@/pages/MT5TradingPage';
 
 function AppContent() {
   const { darkMode } = useApp();
@@ -53,7 +54,7 @@ function AppContent() {
   const isHome = location.pathname === '/';
   const isCrmSubdomain = window.location.hostname === 'crm.tradingbangla.com';
   const isCrm = location.pathname === '/crm' || isCrmSubdomain;
-  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard' || location.pathname === '/forex' || location.pathname === '/mt5-chart' || isCrm;
+  const isTrade = location.pathname === '/trade' || location.pathname === '/ea-dashboard' || location.pathname === '/forex' || location.pathname === '/mt5-chart' || location.pathname === '/mt5-terminal' || isCrm;
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
@@ -80,6 +81,7 @@ function AppContent() {
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/mt5-chart" element={<MT5ChartPage />} />
+            <Route path="/mt5-terminal" element={<MT5TradingPage />} />
           </Routes>
         </ErrorBoundary>
       </div>

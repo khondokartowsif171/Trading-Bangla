@@ -18,6 +18,7 @@ export default function Navbar() {
     { to: '/', label: t('home') },
     { to: '/dashboard', label: t('dashboard') },
     { to: '/mt5-chart', label: 'MT5 Chart' },
+    { to: '/mt5-terminal', label: 'MT5 Terminal' },
     { to: '/forex', label: t('trade') },
     { to: '/portfolio', label: t('portfolio') },
     { to: '/ea-analytics', label: t('eaAnalytics') },
