@@ -13,7 +13,7 @@ function formatTickerPrice(symbol: string, price: number) {
 
 // Fallback static prices for symbols not yet loaded
 const FALLBACK: Record<string, { bid: number; changePercent: number }> = {
-  'XAU/USD': { bid: 2345.67, changePercent: 0.23 },
+  'XAU/USD': { bid: 3315.00, changePercent: 0.23 },
   'EUR/USD': { bid: 1.08523, changePercent: -0.12 },
   'GBP/USD': { bid: 1.27456, changePercent: 0.08 },
   'USD/JPY': { bid: 151.234, changePercent: 0.15 },

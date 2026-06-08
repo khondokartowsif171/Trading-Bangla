@@ -95,8 +95,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [candles, setCandles] = useState<CandleData[]>(() => generateCandles(STOCKS.find(a => a.type === 'forex')!.price));
   const [portfolio, setPortfolio] = useState<PortfolioHolding[]>(() => [
     { symbol: 'EUR/USD', quantity: 10000, avgPrice: 1.0820 },
-    { symbol: 'XAU/USD', quantity: 50, avgPrice: 2330.00 },
-    { symbol: 'BTC', quantity: 0.05, avgPrice: 62000.00 },
+    { symbol: 'XAU/USD', quantity: 50, avgPrice: 3315.00 },
+    { symbol: 'BTC', quantity: 0.05, avgPrice: 104000.00 },
     { symbol: 'AAPL', quantity: 50, avgPrice: 185.00 },
   ]);
   const [balance, setBalance] = useState(100000);

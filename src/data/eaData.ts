@@ -53,8 +53,8 @@ export const OPTIMIZED_PARAMS: OptimizedParam[] = [
 
 export function generateSignals() {
   const signals = [
-    { name: 'XAU/USD', signal: 'BUY', confidence: 87, price: '2345.60', change: '+0.42%' },
-    { name: 'BTC/USD', signal: 'BUY', confidence: 76, price: '67250.00', change: '+1.89%' },
+    { name: 'XAU/USD', signal: 'BUY', confidence: 87, price: '3315.00', change: '+0.38%' },
+    { name: 'BTC/USD', signal: 'BUY', confidence: 76, price: '104000.00', change: '+1.22%' },
     { name: 'EUR/USD', signal: 'SELL', confidence: 62, price: '1.0845', change: '+0.14%' },
   ];
   return signals.map(s => ({

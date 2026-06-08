@@ -180,29 +180,31 @@ async function pollOANDA() {
       else updateForexCandle(sym, bid);
     }
   } catch {
-    // ── Fallback when OANDA proxy unavailable (env vars not yet set) ──────────
-    // Gold: api.gold-api.com (live spot, CORS-OK)
-    // Forex: Frankfurter ECB daily (free, no key) — same as previous behaviour
+    // ── Fallback: same real-time sources as chart-view (/forex iframe) ─────────
+    // Gold: data-asg.goldprice.org (same as chart-view, updates every 10s)
+    // BTC:  Binance REST (same exchange as chart-view WebSocket)
+    // Forex: Twelve Data REST (same API key as chart-view WebSocket)
     await Promise.allSettled([
-      fetch(GOLD_API_FALLBACK).then(r => r.json()).then(d => {
+      fetch('https://data-asg.goldprice.org/dbXRates/USD').then(r => r.json()).then(d => {
+        const price = Number(d?.items?.[0]?.xauPrice);
+        if (price > 1000) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
+      }).catch(() =>
+        fetch(GOLD_API_FALLBACK).then(r => r.json()).then(d => {
+          const price = parseFloat(d.price);
+          if (price > 1000) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
+        })
+      ),
+      fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r => r.json()).then(d => {
         const price = parseFloat(d.price);
-        if (price > 0) { updatePrice('XAU/USD', price); updateGoldCandle(price); }
+        if (price > 0) { updatePrice('BTC/USD', price); updateForexCandle('BTC/USD', price); }
       }),
-      fetch('https://api.frankfurter.dev/v2/rates?base=USD&symbols=EUR,GBP,JPY,CHF,CAD,AUD,NZD').then(r => r.json()).then(d => {
-        const rates = d.rates ?? {};
-        const pairs: Record<string, [string, boolean]> = {
-          EUR: ['EUR/USD', true], GBP: ['GBP/USD', true],
-          AUD: ['AUD/USD', true], NZD: ['NZD/USD', true],
-          JPY: ['USD/JPY', false], CHF: ['USD/CHF', false], CAD: ['USD/CAD', false],
-        };
-        for (const [code, [sym, invert]] of Object.entries(pairs)) {
-          const raw = rates[code];
-          if (!raw) continue;
-          const bid = invert ? parseFloat((1 / raw).toFixed(5)) : parseFloat(raw.toFixed(code === 'JPY' ? 3 : 5));
-          updatePrice(sym, bid, bid);
-          updateForexCandle(sym, bid);
-        }
-      }),
+      fetch('https://api.twelvedata.com/price?symbol=EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,NZD/USD,USD/CHF,GBP/JPY,EUR/GBP&apikey=dd5f8e4e70e0445e96119e5182040118')
+        .then(r => r.json()).then(d => {
+          for (const [sym, val] of Object.entries(d)) {
+            const price = parseFloat((val as { price: string }).price);
+            if (price > 0) { updatePrice(sym, price); updateForexCandle(sym, price); }
+          }
+        }),
     ]);
   }
 }

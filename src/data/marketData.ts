@@ -28,7 +28,7 @@ export const STOCKS: Asset[] = [
   { symbol: 'NVDA', name: 'NVIDIA Corp.', type: 'stock', price: 135.60, change: 4.20, changePercent: 3.20, volume: '52.1M', high: 137.80, low: 132.40, prevClose: 131.40 },
   { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'stock', price: 185.75, change: 0.85, changePercent: 0.46, volume: '32.7M', high: 187.20, low: 184.10, prevClose: 184.90 },
   { symbol: 'META', name: 'Meta Platforms', type: 'stock', price: 512.30, change: 6.80, changePercent: 1.34, volume: '15.4M', high: 515.00, low: 506.50, prevClose: 505.50 },
-  { symbol: 'BTC', name: 'Bitcoin', type: 'crypto', price: 67250.00, change: 1250.00, changePercent: 1.89, volume: '28.5B', high: 68100.00, low: 65800.00, prevClose: 66000.00 },
+  { symbol: 'BTC', name: 'Bitcoin', type: 'crypto', price: 104000.00, change: 1250.00, changePercent: 1.22, volume: '28.5B', high: 105200.00, low: 102500.00, prevClose: 102750.00 },
   { symbol: 'ETH', name: 'Ethereum', type: 'crypto', price: 3450.80, change: -45.20, changePercent: -1.29, volume: '12.3B', high: 3520.00, low: 3420.00, prevClose: 3496.00 },
   { symbol: 'BNB', name: 'Binance Coin', type: 'crypto', price: 598.30, change: 8.50, changePercent: 1.44, volume: '2.1B', high: 605.00, low: 590.00, prevClose: 589.80 },
   { symbol: 'SOL', name: 'Solana', type: 'crypto', price: 142.60, change: 3.40, changePercent: 2.44, volume: '3.8B', high: 146.00, low: 138.50, prevClose: 139.20 },
@@ -37,7 +37,7 @@ export const STOCKS: Asset[] = [
   { symbol: 'GBP/USD', name: 'Pound/US Dollar', type: 'forex', price: 1.2630, change: -0.0020, changePercent: -0.16, volume: '98.3B', high: 1.2660, low: 1.2600, prevClose: 1.2650 },
   { symbol: 'USD/JPY', name: 'US Dollar/Yen', type: 'forex', price: 151.45, change: 0.35, changePercent: 0.23, volume: '145.2B', high: 151.80, low: 150.90, prevClose: 151.10 },
   { symbol: 'USD/BDT', name: 'US Dollar/Taka', type: 'forex', price: 117.50, change: 0.25, changePercent: 0.21, volume: '2.1B', high: 117.80, low: 117.10, prevClose: 117.25 },
-  { symbol: 'XAU/USD', name: 'Gold/US Dollar', type: 'forex', price: 2345.60, change: 12.40, changePercent: 0.53, volume: '85.3B', high: 2360.00, low: 2330.00, prevClose: 2333.20 },
+  { symbol: 'XAU/USD', name: 'Gold/US Dollar', type: 'forex', price: 3315.00, change: 12.40, changePercent: 0.38, volume: '85.3B', high: 3330.00, low: 3295.00, prevClose: 3302.60 },
 ];
 
 export function generateCandles(basePrice: number, count: number = 200): CandleData[] {
