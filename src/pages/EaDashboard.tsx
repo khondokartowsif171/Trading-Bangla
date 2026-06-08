@@ -1,15 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { motion } from 'framer-motion';
-import { Lock, ArrowLeft } from 'lucide-react';
+import { Lock, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function EaDashboard() {
   const { isLoggedIn, loading } = useAuth();
   const { darkMode } = useApp();
   const navigate = useNavigate();
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
 
   useEffect(() => {
     if (!loading && !isLoggedIn) {
@@ -66,13 +68,31 @@ export default function EaDashboard() {
         <span className="ml-auto text-xs text-gray-500">XAU/USD Signal Bot — VPS:9001</span>
       </div>
 
-      {/* Full-height iframe */}
-      <iframe
-        src="/ea-dashboard/index.html"
-        title="Trading Bangla EA Terminal"
-        className="flex-1 w-full border-none"
-        allow="autoplay"
-      />
+      {/* Full-height iframe with loading/error states */}
+      <div className="flex-1 relative overflow-hidden">
+        {!iframeLoaded && !iframeError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-950 z-10">
+            <RefreshCw className="w-6 h-6 animate-spin text-yellow-400" />
+            <span className="text-sm text-gray-400">EA Terminal লোড হচ্ছে...</span>
+          </div>
+        )}
+        {iframeError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-950 z-10">
+            <AlertTriangle className="w-8 h-8 text-red-400" />
+            <p className="text-sm text-white font-medium">EA Dashboard লোড করতে সমস্যা হয়েছে</p>
+            <p className="text-xs text-gray-500">Signal VPS সার্ভার অনুপলব্ধ হতে পারে।</p>
+          </div>
+        )}
+        <iframe
+          src="/ea-dashboard/index.html"
+          title="Trading Bangla EA Terminal"
+          className="w-full h-full border-none"
+          style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
+          allow="autoplay"
+          onLoad={() => setIframeLoaded(true)}
+          onError={() => setIframeError(true)}
+        />
+      </div>
     </div>
   );
 }

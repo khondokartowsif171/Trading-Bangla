@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   PairConfig,
   Position,
@@ -12,7 +12,6 @@ import {
 } from '../types';
 import {
   PlaySquare,
-  DollarSign,
   TrendingUp,
   TrendingDown,
   XCircle,
@@ -21,6 +20,8 @@ import {
   AlertCircle,
   Percent,
   ChevronRight,
+  Download,
+  Calculator,
 } from 'lucide-react';
 
 interface TradePanelProps {
@@ -52,12 +53,12 @@ export default function TradePanel({
 }: TradePanelProps) {
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [lots, setLots] = useState<number>(1.0);
-  const [leverage, setLeverage] = useState<number>(200); // 1:200
-  
+  const [leverage, setLeverage] = useState<number>(200);
+  const [riskPct, setRiskPct] = useState<number>(1);
+
   // Take Profit / Stop Loss toggles & entries
   const [useSL, setUseSL] = useState(false);
   const [slValue, setSlValue] = useState<string>('');
-  
   const [useTP, setUseTP] = useState(false);
   const [tpValue, setTpValue] = useState<string>('');
 
@@ -89,6 +90,40 @@ export default function TradePanel({
     const val = parseFloat(priceStr);
     if (!val || !currentPrice || !pair?.pip) return null;
     return Math.abs(Math.round((val - currentPrice) / pair.pip));
+  };
+
+  // Pip value per standard lot in USD (approximate)
+  const pipValuePerLot = useMemo(() => {
+    const sym = pair?.label || '';
+    if (sym.includes('JPY')) return (10 / currentPrice) * 100;
+    if (sym.includes('XAU') || sym.includes('Gold')) return 10;
+    if (sym.includes('BTC') || sym.includes('Bitcoin')) return 1;
+    if (sym.includes('US30') || sym.includes('Dow') || sym.includes('NAS100') || sym.includes('Nasdaq')) return 1;
+    return 10;
+  }, [pair, currentPrice]);
+
+  // Position sizing: risk $ / (slPips × pipValue per lot)
+  const slPipsNum = useSL ? pipDist(slValue) : null;
+  const riskAmount = account.balance * riskPct / 100;
+  const suggestedLots = slPipsNum && slPipsNum > 0 && pipValuePerLot > 0
+    ? Math.max(0.01, Math.min(10, riskAmount / (slPipsNum * pipValuePerLot)))
+    : 0;
+
+  // CSV export
+  const exportCSV = () => {
+    const rows = ['Symbol,Type,Lots,Entry Price,Exit Price,PnL (USD),Exit Time,Status'];
+    history.forEach(h => {
+      rows.push(`${h.sym},${h.type},${h.lots},${h.entryPrice},${h.exitPrice},${h.pnl.toFixed(2)},${new Date(h.exitTime).toISOString()},${h.status}`);
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tb-trades-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Quick preset SL and TP rates
@@ -361,6 +396,45 @@ export default function TradePanel({
           </div>
         </div>
 
+        {/* RISK CALCULATOR */}
+        <div className="bg-[#0a0f1c] border border-[#1a2540] rounded-lg p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+              <Calculator className="w-3 h-3" /> রিস্ক ক্যালকুলেটর
+            </span>
+            <div className="flex gap-0.5">
+              {[0.5, 1, 2, 3].map(r => (
+                <button
+                  key={r}
+                  onClick={() => setRiskPct(r)}
+                  className={`text-[8px] px-1.5 py-0.5 rounded font-mono font-bold transition ${riskPct === r ? 'bg-cyan-900/80 text-cyan-300 border border-cyan-700/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-300'}`}
+                >
+                  {r}%
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="bg-gray-950/60 rounded p-1.5">
+              <div className="text-[7.5px] text-gray-500 uppercase font-bold">ঝুঁকি পরিমাণ</div>
+              <div className="text-amber-300 font-mono font-bold text-xs">${riskAmount.toFixed(0)}</div>
+            </div>
+            <button
+              onClick={() => suggestedLots > 0 && setLots(Number(suggestedLots.toFixed(2)))}
+              className={`bg-gray-950/60 rounded p-1.5 text-left transition ${suggestedLots > 0 ? 'hover:bg-cyan-950/40 cursor-pointer' : 'cursor-default'}`}
+              title="ক্লিক করে লট সেট করুন"
+            >
+              <div className="text-[7.5px] text-gray-500 uppercase font-bold">প্রস্তাবিত লট {suggestedLots > 0 ? '↩' : ''}</div>
+              <div className={`font-mono font-bold text-xs ${suggestedLots > 0 ? 'text-cyan-300' : 'text-gray-600'}`}>
+                {suggestedLots > 0 ? suggestedLots.toFixed(2) : 'SL দিন'}
+              </div>
+            </button>
+          </div>
+          {suggestedLots > 0 && (
+            <div className="text-[8px] text-gray-600 text-center">SL ({slPipsNum} pips) ভিত্তিক গণনা · ক্লিক করে লট সেট করুন</div>
+          )}
+        </div>
+
         {/* CORE SEND TRANSACTION TRIGGER BUTTON */}
         <button
           onClick={handlePlaceOrder}
@@ -507,14 +581,23 @@ export default function TradePanel({
                     </div>
                   </div>
                 </div>
-                <div className="flex justify-between px-1 mb-1.5">
+                <div className="flex justify-between items-center px-1 mb-1.5">
                   <span className="text-[9px] font-sans text-gray-500 font-bold uppercase tracking-wider">লেনদেনের রেকর্ড</span>
-                  <button
-                    onClick={onResetAccount}
-                    className="text-[9px] font-sans text-[#ff3d57] underline hover:no-underline"
-                  >
-                    রিসেট করুন
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={exportCSV}
+                      className="flex items-center gap-1 text-[8.5px] font-sans text-cyan-400 hover:text-cyan-300 bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-800/20 transition"
+                      title="CSV হিসেবে ডাউনলোড করুন"
+                    >
+                      <Download className="w-2.5 h-2.5" /> CSV
+                    </button>
+                    <button
+                      onClick={onResetAccount}
+                      className="text-[9px] font-sans text-[#ff3d57] underline hover:no-underline"
+                    >
+                      রিসেট
+                    </button>
+                  </div>
                 </div>
                 {history.map((hist) => {
                   const isProfit = hist.pnl >= 0;

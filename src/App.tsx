@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Component, ReactNode } from 'react';
+import { Component, ReactNode, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { AuthProvider } from '@/context/AuthContext';
 
@@ -28,6 +28,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children;
   }
 }
+
+// Eagerly loaded — critical path pages (home, nav, ticker)
 import Navbar from '@/components/Navbar';
 import LivePriceTicker from '@/components/LivePriceTicker';
 import MobileBottomNav from '@/components/MobileBottomNav';
@@ -35,17 +37,27 @@ import AIChat from '@/components/AIChat';
 import WhatsAppFloat from '@/components/WhatsAppFloat';
 import Home from '@/pages/Home';
 import Dashboard from '@/pages/Dashboard';
-import PortfolioPage from '@/pages/PortfolioPage';
-import EAAnalytics from '@/pages/EAAnalytics';
 import ForexMT5 from '@/pages/ForexMT5';
-import AuraCrytox from '@/pages/AuraCrytox';
-import EaDashboard from '@/pages/EaDashboard';
-import UserProfile from '@/pages/UserProfile';
-import AdminDashboard from '@/pages/AdminDashboard';
-import CrmDashboard from '@/pages/CrmDashboard';
-import BlogPage from '@/pages/BlogPage';
-import BlogPost from '@/pages/BlogPost';
-import MT5ChartPage from '@/pages/MT5ChartPage';
+
+// Lazy-loaded — heavy pages not needed on first load
+const PortfolioPage = lazy(() => import('@/pages/PortfolioPage'));
+const EAAnalytics = lazy(() => import('@/pages/EAAnalytics'));
+const AuraCrytox = lazy(() => import('@/pages/AuraCrytox'));
+const EaDashboard = lazy(() => import('@/pages/EaDashboard'));
+const UserProfile = lazy(() => import('@/pages/UserProfile'));
+const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
+const CrmDashboard = lazy(() => import('@/pages/CrmDashboard'));
+const BlogPage = lazy(() => import('@/pages/BlogPage'));
+const BlogPost = lazy(() => import('@/pages/BlogPost'));
+const MT5ChartPage = lazy(() => import('@/pages/MT5ChartPage'));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function AppContent() {
   const { darkMode } = useApp();
@@ -64,23 +76,25 @@ function AppContent() {
       {/* Main content with mobile bottom padding */}
       <div className={isHome ? '' : 'pb-20 md:pb-0'}>
         <ErrorBoundary>
-          <Routes>
-            <Route path="/" element={isCrmSubdomain ? <Navigate to="/crm" replace /> : <Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/trade" element={<Navigate to="/ea-dashboard" replace />} />
-            <Route path="/portfolio" element={<PortfolioPage />} />
-            <Route path="/ea-analytics" element={<EAAnalytics />} />
-            <Route path="/ea-dashboard" element={<EaDashboard />} />
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/forex" element={<ForexMT5 />} />
-            <Route path="/crytox" element={<AuraCrytox />} />
-            <Route path="/tb-admin-2026" element={<AdminDashboard />} />
-            <Route path="/crm" element={<CrmDashboard />} />
-            <Route path="/admin" element={<Navigate to="/" replace />} />
-            <Route path="/blog" element={<BlogPage />} />
-            <Route path="/blog/:slug" element={<BlogPost />} />
-            <Route path="/mt5-chart" element={<MT5ChartPage />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={isCrmSubdomain ? <Navigate to="/crm" replace /> : <Home />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/trade" element={<Navigate to="/ea-dashboard" replace />} />
+              <Route path="/portfolio" element={<PortfolioPage />} />
+              <Route path="/ea-analytics" element={<EAAnalytics />} />
+              <Route path="/ea-dashboard" element={<EaDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/forex" element={<ForexMT5 />} />
+              <Route path="/crytox" element={<AuraCrytox />} />
+              <Route path="/tb-admin-2026" element={<AdminDashboard />} />
+              <Route path="/crm" element={<CrmDashboard />} />
+              <Route path="/admin" element={<Navigate to="/" replace />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
+              <Route path="/mt5-chart" element={<MT5ChartPage />} />
+            </Routes>
+          </Suspense>
         </ErrorBoundary>
       </div>
       {/* Desktop floating widgets — Home page only */}

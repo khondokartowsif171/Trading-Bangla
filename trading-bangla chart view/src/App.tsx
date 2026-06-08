@@ -168,33 +168,47 @@ export default function App() {
     return () => clearInterval(iv);
   }, []);
 
-  // Binance WebSocket — BTCUSD only
+  // Binance WebSocket — BTCUSD only (exponential backoff on reconnect)
   useEffect(() => {
     let ws: WebSocket;
+    let retryDelay = 4000;
+    let destroyed = false;
     const connect = () => {
+      if (destroyed) return;
       try {
         ws = new WebSocket('wss://stream.binance.com:9443/stream?streams=btcusdt@ticker');
+        ws.onopen = () => { retryDelay = 4000; };
         ws.onmessage = (e) => {
           try {
             const d = JSON.parse(e.data);
             const price = parseFloat(d?.data?.c);
             if (price > 0) { liveRef.current['BTCUSD'] = price; setIsAnyLive(true); }
-          } catch { /* ignore parse errors */ }
+          } catch { /* ignore */ }
         };
-        ws.onclose = () => { setTimeout(connect, 4000); };
+        ws.onclose = () => {
+          if (!destroyed) {
+            setTimeout(connect, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, 120000);
+          }
+        };
+        ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
       } catch { /* ignore */ }
     };
     connect();
-    return () => { try { ws?.close(); } catch { /* ignore */ } };
+    return () => { destroyed = true; try { ws?.close(); } catch { /* ignore */ } };
   }, []);
 
-  // Twelve Data WebSocket — forex pairs only (EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD)
+  // Twelve Data WebSocket — forex pairs (exponential backoff on reconnect)
   useEffect(() => {
     let ws: WebSocket;
+    let retryDelay = 4000;
+    let destroyed = false;
     const connect = () => {
+      if (destroyed) return;
       try {
         ws = new WebSocket('wss://ws.twelvedata.com/v1/quotes/price?apikey=dd5f8e4e70e0445e96119e5182040118');
         ws.onopen = () => {
+          retryDelay = 4000;
           ws.send(JSON.stringify({
             action: 'subscribe',
             params: { symbols: 'EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/JPY,GBP/JPY,USD/CHF,EUR/CHF,NZD/USD,EUR/CAD,EUR/AUD' }
@@ -210,11 +224,17 @@ export default function App() {
             }
           } catch { /* ignore */ }
         };
-        ws.onclose = () => { setTimeout(connect, 4000); };
+        ws.onclose = () => {
+          if (!destroyed) {
+            setTimeout(connect, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, 120000);
+          }
+        };
+        ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
       } catch { /* ignore */ }
     };
     connect();
-    return () => { try { ws?.close(); } catch { /* ignore */ } };
+    return () => { destroyed = true; try { ws?.close(); } catch { /* ignore */ } };
   }, []);
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -651,6 +671,28 @@ export default function App() {
           </div>
         </header>
 
+        {/* Mobile stats bar — visible below header on small screens */}
+        <div className="lg:hidden bg-[#07090e] border-b border-white/10 px-3 py-1.5 grid grid-cols-4 gap-1 text-center shrink-0">
+          <div>
+            <div className="text-[6.5px] text-white/30 uppercase font-bold">BAL</div>
+            <div className="text-[9px] font-mono font-black text-white">${account.balance.toFixed(0)}</div>
+          </div>
+          <div>
+            <div className="text-[6.5px] text-white/30 uppercase font-bold">EQUITY</div>
+            <div className="text-[9px] font-mono font-black text-[#d085ff]">${account.equity.toFixed(0)}</div>
+          </div>
+          <div>
+            <div className="text-[6.5px] text-white/30 uppercase font-bold">P&L</div>
+            <div className={`text-[9px] font-mono font-black ${account.floatingPnl >= 0 ? 'text-[#00FF41]' : 'text-[#FF3131]'}`}>
+              {account.floatingPnl >= 0 ? '+' : ''}${account.floatingPnl.toFixed(1)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[6.5px] text-white/30 uppercase font-bold">FREE MRG</div>
+            <div className="text-[9px] font-mono font-black text-emerald-400">${account.freeMargin.toFixed(0)}</div>
+          </div>
+        </div>
+
         {/* Absolute Floating alert updates */}
         {alertNotify && (
           <div className="absolute top-[65px] left-1/2 transform -translate-x-1/2 z-50 bg-[#090b11]/95 border border-purple-500/30 shadow-[0_0_20px_rgba(168,85,247,0.3)] rounded px-4 py-2.5 max-w-[420px] flex items-center gap-3 animate-bounce">
@@ -664,7 +706,7 @@ export default function App() {
           
           {/* Watchlist Collapsed Sidebar strip trigger */}
           {!showWatchlist && (
-            <div className="w-11 bg-[#050505] border-r border-white/10 hidden md:flex flex-col items-center py-4 space-y-4 shrink-0 transition-all duration-300">
+            <div className="w-11 bg-[#050505] border-r border-white/10 flex flex-col items-center py-4 space-y-4 shrink-0 transition-all duration-300">
               <button
                 onClick={() => setShowWatchlist(true)}
                 className="p-1.5 bg-purple-950/50 text-[#d085ff] border border-purple-800/40 rounded hover:bg-purple-950 hover:text-white transition-all transform active:scale-95"
@@ -682,11 +724,18 @@ export default function App() {
             </div>
           )}
 
-          {/* LEFT COMPONENT: Watchlist Currencies (Collapsible multitasking element) */}
-          <aside 
-            className={`transition-all duration-300 ease-in-out border-r border-white/10 bg-[#07090e]/95 flex flex-col shrink-0 select-none overflow-hidden hidden md:flex opacity-100 ${
-              !showWatchlist ? 'w-0 border-r-0 opacity-0 pointer-events-none' : ''
-            }`}
+          {/* LEFT COMPONENT: Watchlist — fixed overlay on mobile, sidebar on desktop */}
+          {showWatchlist && (
+            <div
+              className="fixed inset-0 bg-black/60 z-40 md:hidden"
+              onClick={() => setShowWatchlist(false)}
+            />
+          )}
+          <aside
+            className={`transition-all duration-300 ease-in-out border-r border-white/10 bg-[#07090e] flex flex-col shrink-0 select-none overflow-hidden
+              ${showWatchlist
+                ? 'fixed top-0 left-0 h-full z-50 md:relative md:z-auto'
+                : 'w-0 border-r-0 opacity-0 pointer-events-none'}`}
             style={{ width: showWatchlist ? `${watchlistWidth}px` : '0px' }}
           >
             <WatchList
