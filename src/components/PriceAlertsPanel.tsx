@@ -1,15 +1,28 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAllPrices } from '@/hooks/useMarketData';
 import { usePriceAlerts } from '@/hooks/usePriceAlerts';
-import { Bell, BellRing, Plus, Trash2, X, CheckCircle, Clock } from 'lucide-react';
+import { Bell, BellRing, Plus, Trash2, X, CheckCircle, Clock, Zap } from 'lucide-react';
 
-const SYMBOL_OPTIONS = ['XAU/USD', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF', 'USD/CAD', 'NZD/USD', 'EUR/GBP', 'GBP/JPY'];
+const SYMBOL_OPTIONS = [
+  'XAU/USD', 'XAG/USD',
+  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF',
+  'USD/CAD', 'NZD/USD', 'EUR/GBP', 'GBP/JPY', 'EUR/JPY',
+  'EUR/CHF', 'GBP/CHF', 'EUR/CAD', 'GBP/CAD', 'EUR/AUD',
+  'BTC/USD', 'US30', 'NAS100', 'USOIL',
+];
+
+const PCT_OFFSETS = [0.1, 0.25, 0.5, 1.0];
 
 function fmtPrice(symbol: string, price: number) {
-  if (symbol.includes('XAU') || symbol.includes('BTC')) return price.toFixed(2);
+  if (symbol.includes('XAU') || symbol.includes('BTC') || symbol.includes('US30') || symbol.includes('NAS')) return price.toFixed(2);
+  if (symbol.includes('XAG') || symbol.includes('OIL')) return price.toFixed(3);
   if (symbol.includes('JPY')) return price.toFixed(3);
   return price.toFixed(5);
+}
+
+function normalizeSymbol(sym: string): string {
+  return sym.replace('/', '');
 }
 
 export default function PriceAlertsPanel() {
@@ -21,6 +34,19 @@ export default function PriceAlertsPanel() {
   const [formCond, setFormCond] = useState<'above' | 'below'>('above');
   const [formPrice, setFormPrice] = useState('');
   const [formError, setFormError] = useState('');
+
+  // Try both with and without slash
+  const liveQ = livePrices[formSymbol] || livePrices[normalizeSymbol(formSymbol)];
+  const livePrice = liveQ?.bid ?? 0;
+
+  const setQuickPrice = useCallback((pct: number, dir: 'above' | 'below') => {
+    if (!livePrice) return;
+    const offset = livePrice * (pct / 100);
+    const target = dir === 'above' ? livePrice + offset : livePrice - offset;
+    setFormPrice(fmtPrice(formSymbol, target));
+    setFormCond(dir);
+    setFormError('');
+  }, [livePrice, formSymbol]);
 
   const handleAdd = () => {
     const p = parseFloat(formPrice);
@@ -37,19 +63,21 @@ export default function PriceAlertsPanel() {
       <div className={`px-4 py-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
         <div className="flex items-center gap-2">
           {pendingCount > 0
-            ? <BellRing className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`} />
+            ? <BellRing className={`w-4 h-4 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'} animate-bounce`} />
             : <Bell className={`w-4 h-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
           }
           <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Price Alerts</h3>
           {pendingCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">{pendingCount}</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 animate-pulse">
+              {pendingCount}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1">
           {triggeredCount > 0 && (
             <button onClick={clearTriggered}
               className={`text-[10px] px-2 py-1 rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
-              Clear done
+              Clear ✓
             </button>
           )}
           <button onClick={() => { setShowForm(v => !v); setFormError(''); }}
@@ -66,7 +94,7 @@ export default function PriceAlertsPanel() {
             {/* Symbol */}
             <div>
               <label className={`text-[10px] font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Symbol</label>
-              <select value={formSymbol} onChange={e => setFormSymbol(e.target.value)}
+              <select value={formSymbol} onChange={e => { setFormSymbol(e.target.value); setFormPrice(''); }}
                 className={`w-full mt-1 px-2 py-1.5 rounded-lg text-xs border outline-none ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
                 }`}>
@@ -88,78 +116,107 @@ export default function PriceAlertsPanel() {
               </div>
             </div>
           </div>
-          {/* Price */}
+
+          {/* Quick offset buttons */}
+          {livePrice > 0 && (
+            <div>
+              <label className={`text-[10px] font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Quick Set  <span className={`font-mono ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(live: {fmtPrice(formSymbol, livePrice)})</span>
+              </label>
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {PCT_OFFSETS.map(pct => (
+                  <button key={`up-${pct}`} onClick={() => setQuickPrice(pct, 'above')}
+                    className="px-2 py-1 text-[9px] rounded-md bg-green-500/15 text-green-400 border border-green-500/20 hover:bg-green-500/25 transition-colors">
+                    ▲ +{pct}%
+                  </button>
+                ))}
+                {PCT_OFFSETS.map(pct => (
+                  <button key={`dn-${pct}`} onClick={() => setQuickPrice(pct, 'below')}
+                    className="px-2 py-1 text-[9px] rounded-md bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-colors">
+                    ▼ -{pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Price Input */}
           <div>
-            <label className={`text-[10px] font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              Alert Price {livePrices[formSymbol] ? `(live: ${fmtPrice(formSymbol, livePrices[formSymbol].bid)})` : ''}
-            </label>
+            <label className={`text-[10px] font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Alert Price</label>
             <input
               type="number" step="any" value={formPrice}
               onChange={e => { setFormPrice(e.target.value); setFormError(''); }}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder={livePrices[formSymbol] ? fmtPrice(formSymbol, livePrices[formSymbol].bid) : '0.00'}
+              placeholder={livePrice > 0 ? fmtPrice(formSymbol, livePrice) : '0.00'}
               className={`w-full mt-1 px-3 py-2 rounded-lg text-xs border outline-none ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-600' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400'
               } ${formError ? 'border-red-500' : ''}`}
             />
             {formError && <p className="text-[10px] text-red-400 mt-0.5">{formError}</p>}
           </div>
+
           <button onClick={handleAdd}
-            className="w-full py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
-            Add Alert
+            className="w-full py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors flex items-center justify-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" /> Alert Set করুন
           </button>
         </div>
       )}
 
       {/* Alert List */}
-      <div className="overflow-y-auto max-h-[280px]">
+      <div className="overflow-y-auto max-h-[300px]">
         {alerts.length === 0 ? (
           <div className={`px-4 py-8 text-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
             <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="text-xs">No alerts set</p>
-            <p className="text-[10px] mt-0.5">Click + to add price alert</p>
+            <p className="text-xs">কোনো alert নেই</p>
+            <p className="text-[10px] mt-0.5">+ বাটনে ক্লিক করে alert যোগ করুন</p>
           </div>
         ) : (
           alerts.map(alert => {
-            const liveQ = livePrices[alert.symbol];
-            const distPercent = liveQ
-              ? (((alert.price - liveQ.bid) / liveQ.bid) * 100).toFixed(2)
+            const liveQ2 = livePrices[alert.symbol] || livePrices[normalizeSymbol(alert.symbol)];
+            const liveBid = liveQ2?.bid;
+            const distPct = liveBid
+              ? (((alert.price - liveBid) / liveBid) * 100)
               : null;
+            const isClose = distPct !== null && Math.abs(distPct) < 0.5;
             return (
               <div key={alert.id}
                 className={`flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 transition-colors ${
                   alert.triggered
                     ? darkMode ? 'bg-green-500/5 border-gray-800/50' : 'bg-green-50 border-gray-100'
-                    : darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'
+                    : isClose
+                      ? darkMode ? 'bg-yellow-500/5 border-yellow-500/10' : 'bg-yellow-50 border-yellow-100'
+                      : darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'
                 }`}
               >
-                {/* Status icon */}
                 <div className="shrink-0">
                   {alert.triggered
                     ? <CheckCircle className="w-3.5 h-3.5 text-green-400" />
-                    : <Clock className="w-3.5 h-3.5 text-yellow-400 animate-pulse" />
+                    : isClose
+                      ? <Bell className="w-3.5 h-3.5 text-yellow-400 animate-bounce" />
+                      : <Clock className="w-3.5 h-3.5 text-gray-500 animate-pulse" />
                   }
                 </div>
 
-                {/* Alert details */}
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{alert.symbol}</span>
-                    <span className={`text-[10px] font-medium ${alert.condition === 'above' ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] font-bold ${alert.condition === 'above' ? 'text-green-400' : 'text-red-400'}`}>
                       {alert.condition === 'above' ? '▲' : '▼'} {fmtPrice(alert.symbol, alert.price)}
                     </span>
+                    {isClose && !alert.triggered && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">NEAR</span>
+                    )}
                   </div>
                   <div className={`text-[9px] mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                     {alert.triggered
-                      ? `Triggered ${alert.triggeredAt ? new Date(alert.triggeredAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}`
-                      : distPercent
-                        ? `${parseFloat(distPercent) > 0 ? '+' : ''}${distPercent}% away from live`
+                      ? `✓ Triggered ${alert.triggeredAt ? new Date(alert.triggeredAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}`
+                      : distPct !== null
+                        ? `${distPct > 0 ? '+' : ''}${distPct.toFixed(2)}% away · live: ${liveBid ? fmtPrice(alert.symbol, liveBid) : '—'}`
                         : 'Watching...'
                     }
                   </div>
                 </div>
 
-                {/* Remove */}
                 <button onClick={() => removeAlert(alert.id)}
                   className={`p-1 rounded transition-colors shrink-0 ${
                     darkMode ? 'text-gray-700 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
@@ -171,6 +228,15 @@ export default function PriceAlertsPanel() {
           })
         )}
       </div>
+
+      {alerts.length > 0 && (
+        <div className={`px-4 py-1.5 text-[9px] border-t flex items-center justify-between ${
+          darkMode ? 'border-gray-800 text-gray-700 bg-gray-900/40' : 'border-gray-100 text-gray-400 bg-gray-50'
+        }`}>
+          <span>⏳ {pendingCount} pending · ✓ {triggeredCount} triggered</span>
+          <span>{SYMBOL_OPTIONS.length} pairs supported</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Calendar, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Calendar, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 
 interface CalendarEvent {
   id: string;
-  time: string;
+  time: string;       // HH:mm UTC
   country: string;
   flag: string;
   event: string;
@@ -15,13 +15,14 @@ interface CalendarEvent {
 }
 
 const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_API_KEY as string | undefined;
+const BD_OFFSET = 6; // UTC+6
 
 const FLAG_MAP: Record<string, string> = {
   US: '🇺🇸', EU: '🇪🇺', GB: '🇬🇧', JP: '🇯🇵', CN: '🇨🇳',
   CA: '🇨🇦', AU: '🇦🇺', NZ: '🇳🇿', CH: '🇨🇭', DE: '🇩🇪',
+  BD: '🇧🇩',
 };
 
-// Rich static fallback — major FX/Gold events always visible
 const STATIC_EVENTS: CalendarEvent[] = [
   { id: 's1', time: '09:00', country: 'EU', flag: '🇪🇺', event: 'ECB Monetary Policy Statement', impact: 'high', actual: '', forecast: '3.40%', prev: '3.65%' },
   { id: 's2', time: '12:30', country: 'US', flag: '🇺🇸', event: 'Core CPI m/m', impact: 'high', actual: '', forecast: '0.3%', prev: '0.4%' },
@@ -34,6 +35,22 @@ const STATIC_EVENTS: CalendarEvent[] = [
   { id: 's9', time: '15:30', country: 'US', flag: '🇺🇸', event: 'Crude Oil Inventories', impact: 'medium', actual: '', forecast: '-1.8M', prev: '0.5M' },
   { id: 's10', time: '07:45', country: 'EU', flag: '🇪🇺', event: 'EU CPI Flash Estimate y/y', impact: 'high', actual: '', forecast: '2.4%', prev: '2.6%' },
 ];
+
+function utcToBd(utcTime: string): string {
+  const [h, m] = utcTime.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return '—';
+  const bdH = (h + BD_OFFSET) % 24;
+  return `${String(bdH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function minutesUntilUtc(utcTime: string): number | null {
+  const [h, m] = utcTime.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  const now = new Date();
+  const eventMins = h * 60 + m;
+  const nowMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return eventMins - nowMins;
+}
 
 async function fetchFinnhubCalendar(): Promise<CalendarEvent[]> {
   if (!FINNHUB_KEY) return [];
@@ -50,9 +67,9 @@ async function fetchFinnhubCalendar(): Promise<CalendarEvent[]> {
       country: string; event: string; time: string; impact: string;
       actual: number | null; estimate: number | null; prev: number | null; unit: string;
     }[];
-    return events.slice(0, 12).map((e, i) => ({
+    return events.slice(0, 15).map((e, i) => ({
       id: `f${i}`,
-      time: e.time ? e.time.split('T')[1]?.slice(0, 5) || 'All Day' : 'All Day',
+      time: e.time ? e.time.split('T')[1]?.slice(0, 5) || '00:00' : '00:00',
       country: e.country || 'US',
       flag: FLAG_MAP[e.country] || '🌐',
       event: e.event,
@@ -64,16 +81,16 @@ async function fetchFinnhubCalendar(): Promise<CalendarEvent[]> {
   } catch { return []; }
 }
 
-const impactColor = (impact: string) => {
+const impactDot = (impact: string) => {
   if (impact === 'high') return 'bg-red-500';
   if (impact === 'medium') return 'bg-yellow-500';
-  return 'bg-gray-400';
+  return 'bg-gray-500';
 };
 
-const impactLabel = (impact: string) => {
+const impactText = (impact: string) => {
   if (impact === 'high') return 'text-red-400';
   if (impact === 'medium') return 'text-yellow-400';
-  return 'text-gray-400';
+  return 'text-gray-500';
 };
 
 export default function EconomicCalendar() {
@@ -82,6 +99,12 @@ export default function EconomicCalendar() {
   const [loading, setLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [filter, setFilter] = useState<'all' | 'high'>('all');
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -95,6 +118,19 @@ export default function EconomicCalendar() {
 
   const filtered = filter === 'high' ? events.filter(e => e.impact === 'high') : events;
 
+  // Sort: upcoming first, then by time
+  const sorted = [...filtered].sort((a, b) => {
+    const mA = minutesUntilUtc(a.time) ?? 9999;
+    const mB = minutesUntilUtc(b.time) ?? 9999;
+    // Passed events go to bottom
+    const aScore = mA < -60 ? 10000 + mA : mA;
+    const bScore = mB < -60 ? 10000 + mB : mB;
+    return aScore - bScore;
+  });
+
+  const bdNow = `${String((now.getUTCHours() + BD_OFFSET) % 24).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} BD`;
+  const utcNow = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} UTC`;
+
   return (
     <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
       {/* Header */}
@@ -107,7 +143,6 @@ export default function EconomicCalendar() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          {/* Filter */}
           <button
             onClick={() => setFilter(f => f === 'all' ? 'high' : 'all')}
             className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
@@ -117,7 +152,7 @@ export default function EconomicCalendar() {
             }`}
           >
             <AlertTriangle className="w-2.5 h-2.5" />
-            High Impact
+            High
           </button>
           <button onClick={load} disabled={loading}
             className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
@@ -126,51 +161,78 @@ export default function EconomicCalendar() {
         </div>
       </div>
 
-      {/* Events List */}
-      <div className="overflow-y-auto max-h-[380px]">
-        {filtered.map(ev => (
-          <div
-            key={ev.id}
-            className={`flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 ${
-              darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'
-            } transition-colors`}
-          >
-            {/* Impact dot */}
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${impactColor(ev.impact)}`} />
-
-            {/* Time */}
-            <span className={`text-[10px] font-mono w-10 shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{ev.time}</span>
-
-            {/* Flag + country */}
-            <span className="text-sm shrink-0">{ev.flag}</span>
-
-            {/* Event name */}
-            <div className="min-w-0 flex-1">
-              <p className={`text-xs font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{ev.event}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className={`text-[9px] font-bold uppercase ${impactLabel(ev.impact)}`}>{ev.impact}</span>
-                <span className={`text-[9px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{ev.country}</span>
-              </div>
-            </div>
-
-            {/* Actual / Forecast / Prev */}
-            <div className="shrink-0 text-right space-y-0.5">
-              {ev.actual ? (
-                <div className="text-[10px] font-bold text-green-400">{ev.actual}</div>
-              ) : ev.forecast ? (
-                <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>F: {ev.forecast}</div>
-              ) : null}
-              {ev.prev && (
-                <div className={`text-[9px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>P: {ev.prev}</div>
-              )}
-            </div>
-          </div>
-        ))}
+      {/* BD / UTC clock bar */}
+      <div className={`flex items-center justify-between px-4 py-1.5 text-[9px] border-b ${
+        darkMode ? 'border-gray-800/50 bg-gray-900/40 text-gray-500' : 'border-gray-100 bg-gray-50 text-gray-400'
+      }`}>
+        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 🇧🇩 {bdNow}</span>
+        <span className={`text-[9px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>UTC: {utcNow}</span>
+        <span>সময় UTC+6</span>
       </div>
 
-      {/* Footer */}
-      <div className={`px-4 py-2 text-[10px] ${darkMode ? 'text-gray-600 bg-gray-900/50' : 'text-gray-400 bg-gray-50'}`}>
-        {isLive ? 'Live data from Finnhub — next 7 days' : 'Sample events — add VITE_FINNHUB_API_KEY for live data'}
+      {/* Events */}
+      <div className="overflow-y-auto max-h-[360px]">
+        {sorted.map(ev => {
+          const minsLeft = minutesUntilUtc(ev.time);
+          const isPast = minsLeft !== null && minsLeft < -5;
+          const isUpcoming = minsLeft !== null && minsLeft >= 0 && minsLeft <= 60;
+          return (
+            <div
+              key={ev.id}
+              className={`flex items-center gap-2.5 px-4 py-2.5 border-b last:border-b-0 transition-colors ${
+                isUpcoming
+                  ? darkMode ? 'border-yellow-500/10 bg-yellow-500/5' : 'border-yellow-100 bg-yellow-50'
+                  : isPast
+                    ? darkMode ? 'border-gray-800/30 opacity-50' : 'border-gray-100 opacity-60'
+                    : darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'
+              }`}
+            >
+              {/* Impact dot */}
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${impactDot(ev.impact)}`} />
+
+              {/* UTC + BD time */}
+              <div className="shrink-0 text-right">
+                <div className={`text-[10px] font-mono ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{ev.time}</div>
+                <div className={`text-[9px] font-mono ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{utcToBd(ev.time)} BD</div>
+              </div>
+
+              {/* Flag */}
+              <span className="text-sm shrink-0">{ev.flag}</span>
+
+              {/* Event name */}
+              <div className="min-w-0 flex-1">
+                <p className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{ev.event}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[9px] font-bold uppercase ${impactText(ev.impact)}`}>{ev.impact}</span>
+                  {isUpcoming && minsLeft !== null && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-bold">
+                      {minsLeft === 0 ? 'NOW' : `${minsLeft}m`}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Data */}
+              <div className="shrink-0 text-right space-y-0.5">
+                {ev.actual ? (
+                  <div className="text-[10px] font-bold text-green-400">{ev.actual}</div>
+                ) : ev.forecast ? (
+                  <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>F: {ev.forecast}</div>
+                ) : null}
+                {ev.prev && (
+                  <div className={`text-[9px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>P: {ev.prev}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={`px-4 py-1.5 text-[9px] border-t flex items-center justify-between ${
+        darkMode ? 'border-gray-800 text-gray-700 bg-gray-900/40' : 'border-gray-100 text-gray-400 bg-gray-50'
+      }`}>
+        <span>{isLive ? 'Finnhub Live — ৭ দিনের ইভেন্ট' : 'Sample data — VITE_FINNHUB_API_KEY দিয়ে live করুন'}</span>
+        <span>{sorted.filter(e => !((minutesUntilUtc(e.time) ?? -9999) < -5)).length} upcoming</span>
       </div>
     </div>
   );
