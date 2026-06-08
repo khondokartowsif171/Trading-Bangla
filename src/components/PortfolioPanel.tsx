@@ -1,152 +1,166 @@
 import { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
-import { PieChart, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { PieChart, Wallet, TrendingUp, TrendingDown, Trophy, BarChart2, ArrowUpRight } from 'lucide-react';
 
 export default function PortfolioPanel() {
   const { darkMode, t, portfolio, assets, balance, trades } = useApp();
 
-  const { totalValue, totalPnL, holdings } = useMemo(() => {
+  const { totalValue, totalPnL, holdings, winRate, totalTrades, bestTrade } = useMemo(() => {
     const holdings = portfolio.map(h => {
-      const asset = assets.find(a => a.symbol === h.symbol);
-      const currentPrice = asset?.price || 0;
-      const value = currentPrice * h.quantity;
-      const costBasis = h.avgPrice * h.quantity;
-      const pnl = value - costBasis;
-      const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+      const asset       = assets.find(a => a.symbol === h.symbol);
+      const currentPrice = asset?.price ?? 0;
+      const value       = currentPrice * h.quantity;
+      const costBasis   = h.avgPrice * h.quantity;
+      const pnl         = value - costBasis;
+      const pnlPercent  = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
       return { ...h, currentPrice, value, costBasis, pnl, pnlPercent, asset };
     });
 
-    const totalValue = holdings.reduce((sum, h) => sum + h.value, 0);
-    const totalCost = holdings.reduce((sum, h) => sum + h.costBasis, 0);
-    const totalPnL = totalValue - totalCost;
+    const totalValue   = holdings.reduce((s, h) => s + h.value, 0);
+    const totalCost    = holdings.reduce((s, h) => s + h.costBasis, 0);
+    const totalPnL     = totalValue - totalCost;
+    const wins         = trades.filter(t => t.type === 'sell' && t.price > (t as { avgBuy?: number }).avgBuy!).length;
+    const winRate      = trades.length > 0 ? Math.round((wins / trades.length) * 100) : 0;
+    const bestTrade    = trades.length > 0
+      ? trades.reduce((best, t) => (!best || (t as { pnl?: number }).pnl! > (best as { pnl?: number }).pnl!) ? t : best, trades[0])
+      : null;
 
-    return { totalValue, totalPnL, holdings };
-  }, [portfolio, assets]);
+    return { totalValue, totalPnL, holdings, winRate, totalTrades: trades.length, bestTrade };
+  }, [portfolio, assets, trades]);
 
-  const isPositive = totalPnL >= 0;
+  const isPositive  = totalPnL >= 0;
+  const totalEquity = totalValue + balance;
+
+  const dm = darkMode;
 
   return (
-    <div className={`rounded-2xl border overflow-hidden ${
-      darkMode ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'
-    }`}>
-      <div className={`px-4 py-3 border-b flex items-center gap-2 ${
-        darkMode ? 'border-gray-800' : 'border-gray-200'
-      }`}>
-        <PieChart className={`w-4 h-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
-        <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          {t('portfolio')}
-        </h3>
+    <div className={`rounded-2xl border overflow-hidden ${dm ? 'border-gray-800 bg-gray-950' : 'border-gray-200 bg-white'}`}>
+      {/* Header */}
+      <div className={`px-4 py-3 border-b flex items-center justify-between ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+        <div className="flex items-center gap-2">
+          <PieChart className={`w-4 h-4 ${dm ? 'text-indigo-400' : 'text-indigo-600'}`} />
+          <h3 className={`font-semibold text-sm ${dm ? 'text-white' : 'text-gray-900'}`}>{t('portfolio')}</h3>
+        </div>
+        {totalTrades > 0 && (
+          <div className={`flex items-center gap-1 text-[10px] font-bold ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
+            <Trophy className="w-3 h-3" />
+            {winRate}% Win Rate
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Summary */}
-        <div className={`rounded-xl p-4 border ${
-          darkMode ? 'border-gray-800 bg-gray-900/50' : 'border-gray-100 bg-gray-50'
-        }`}>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className={`text-[10px] uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                {t('totalPortfolio')}
-              </div>
-              <div className={`text-lg font-bold mt-0.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </div>
-            <div>
-              <div className={`text-[10px] uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                {t('todayPnL')}
-              </div>
-              <div className={`text-lg font-bold mt-0.5 flex items-center gap-1 ${
-                isPositive ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                {isPositive ? '+' : ''}${totalPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className={`rounded-xl p-3 border text-center ${dm ? 'border-gray-800 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+            <p className={`text-[9px] uppercase tracking-wider mb-0.5 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Total Equity</p>
+            <p className={`text-sm font-bold tabular-nums ${dm ? 'text-white' : 'text-gray-900'}`}>
+              ${totalEquity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
           </div>
-          <div className={`flex items-center gap-2 mt-3 pt-3 border-t ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-            <Wallet className="w-3.5 h-3.5 text-gray-500" />
-            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {t('availableBalance')}:
-            </span>
-            <span className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              ${balance.toLocaleString()}
-            </span>
+          <div className={`rounded-xl p-3 border text-center ${dm ? 'border-gray-800 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+            <p className={`text-[9px] uppercase tracking-wider mb-0.5 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Portfolio P/L</p>
+            <p className={`text-sm font-bold flex items-center justify-center gap-0.5 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+              {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+              {isPositive ? '+' : ''}${totalPnL.toFixed(2)}
+            </p>
+          </div>
+          <div className={`rounded-xl p-3 border text-center ${dm ? 'border-gray-800 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+            <p className={`text-[9px] uppercase tracking-wider mb-0.5 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Cash</p>
+            <div className="flex items-center justify-center gap-1">
+              <Wallet className={`w-3 h-3 ${dm ? 'text-gray-500' : 'text-gray-400'}`} />
+              <p className={`text-sm font-bold tabular-nums ${dm ? 'text-white' : 'text-gray-900'}`}>
+                ${balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Holdings */}
-        <div className="space-y-1">
-          <div className={`text-[10px] uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-            {t('orders')}
+        {/* Allocation progress bars */}
+        {holdings.length > 0 && (
+          <div className="space-y-2">
+            <p className={`text-[10px] font-semibold uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Holdings</p>
+            {holdings.map(h => {
+              const allocPct = totalEquity > 0 ? (h.value / totalEquity) * 100 : 0;
+              return (
+                <div key={h.symbol}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>{h.symbol}</span>
+                      <span className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{h.quantity} shares</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold ${dm ? 'text-gray-200' : 'text-gray-800'}`}>
+                        ${h.value.toFixed(2)}
+                      </span>
+                      <span className={`text-[10px] font-bold min-w-[44px] text-right ${h.pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {h.pnlPercent >= 0 ? '+' : ''}{h.pnlPercent.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                  {/* Allocation bar */}
+                  <div className={`h-1.5 rounded-full overflow-hidden ${dm ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                    <div
+                      className={`h-full rounded-full transition-all ${h.pnlPercent >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min(allocPct, 100)}%` }}
+                    />
+                  </div>
+                  <div className={`text-[9px] mt-0.5 ${dm ? 'text-gray-700' : 'text-gray-400'}`}>
+                    {allocPct.toFixed(1)}% of portfolio · avg ${h.avgPrice.toFixed(2)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {holdings.length === 0 ? (
-            <p className={`text-xs py-4 text-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              {t('noData')}
-            </p>
-          ) : (
-            holdings.map(h => (
-              <div
-                key={h.symbol}
-                className={`flex items-center justify-between py-2.5 px-2 rounded-lg transition-colors ${
-                  darkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className={`text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                    {h.symbol}
-                  </div>
-                  <div className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {h.quantity} @ ${h.avgPrice.toFixed(2)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                    ${h.value.toFixed(2)}
-                  </div>
-                  <div className={`text-[10px] font-medium ${
-                    h.pnlPercent >= 0 ? 'text-green-500' : 'text-red-500'
-                  }`}>
-                    {h.pnlPercent >= 0 ? '+' : ''}{h.pnlPercent.toFixed(2)}%
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        )}
+
+        {holdings.length === 0 && (
+          <div className={`py-6 text-center ${dm ? 'text-gray-700' : 'text-gray-400'}`}>
+            <BarChart2 className="w-7 h-7 mx-auto mb-1.5 opacity-25" />
+            <p className="text-xs">{t('noData')}</p>
+            <p className="text-[10px] mt-0.5">Trade করে portfolio তৈরি করুন</p>
+          </div>
+        )}
 
         {/* Recent Trades */}
         {trades.length > 0 && (
-          <div className="space-y-1">
-            <div className={`text-[10px] uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              {t('recentTrades')}
-            </div>
-            {trades.slice(0, 5).map(trade => (
-              <div
-                key={trade.id}
-                className={`flex items-center justify-between py-1.5 px-2 rounded-lg text-xs ${
-                  darkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'
-                }`}
-              >
+          <div className="space-y-1.5">
+            <p className={`text-[10px] font-semibold uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{t('recentTrades')}</p>
+            {trades.slice(0, 4).map(trade => (
+              <div key={trade.id}
+                className={`flex items-center justify-between py-2 px-2.5 rounded-xl transition-colors ${dm ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                     trade.type === 'buy'
-                      ? darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700'
-                      : darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-700'
-                  }`}>
-                    {trade.type.toUpperCase()}
-                  </span>
-                  <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {trade.symbol}
-                  </span>
+                      ? dm ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700'
+                      : dm ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-700'
+                  }`}>{trade.type.toUpperCase()}</span>
+                  <span className={`text-xs font-semibold ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{trade.symbol}</span>
                 </div>
-                <div className="text-right">
-                  <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {trade.quantity} × ${trade.price}
-                  </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{trade.quantity} × ${trade.price}</span>
+                  <ArrowUpRight className={`w-3 h-3 ${dm ? 'text-gray-700' : 'text-gray-300'}`} />
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Stats row */}
+        {totalTrades > 0 && (
+          <div className={`rounded-xl p-3 border grid grid-cols-3 gap-2 text-center ${dm ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
+            <div>
+              <p className={`text-[9px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Trades</p>
+              <p className={`text-sm font-bold ${dm ? 'text-white' : 'text-gray-900'}`}>{totalTrades}</p>
+            </div>
+            <div>
+              <p className={`text-[9px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Win Rate</p>
+              <p className={`text-sm font-bold ${winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{winRate}%</p>
+            </div>
+            <div>
+              <p className={`text-[9px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Holdings</p>
+              <p className={`text-sm font-bold ${dm ? 'text-indigo-400' : 'text-indigo-600'}`}>{holdings.length}</p>
+            </div>
           </div>
         )}
       </div>
