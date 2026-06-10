@@ -47,12 +47,30 @@ export interface PDZone {
   bias: 'bullish' | 'bearish' | 'neutral';
 }
 
+export interface SRLevel {
+  type: 'support' | 'resistance';
+  price: number;
+  strength: number; // 1–5 (touch count)
+  index: number;    // most recent touch (absolute)
+  broken: boolean;  // price has closed beyond this level
+}
+
+export interface SDZone {
+  type: 'supply' | 'demand';
+  high: number;
+  low: number;
+  startIndex: number;
+  tested: boolean; // price has re-entered the zone
+}
+
 export interface SMCData {
   orderBlocks: OrderBlockZone[];
   fvgZones: FVGZone[];
   structureBreaks: StructureBreak[];
   liquidityLevels: LiquidityLevel[];
   pdZone: PDZone | null;
+  srLevels: SRLevel[];
+  sdZones: SDZone[];
   bias: 'bullish' | 'bearish' | 'neutral';
 }
 
@@ -173,9 +191,124 @@ function detectPDZone(candles: Candle[], lastPrice: number): PDZone | null {
   };
 }
 
+function detectSR(candles: Candle[], lastPrice: number, offset = 0, tolerance = 0.002): SRLevel[] {
+  const levels: SRLevel[] = [];
+  const highs = swingHighs(candles, 3);
+  const lows = swingLows(candles, 3);
+
+  // Cluster swing highs → resistance/support levels
+  const usedHighs = new Set<number>();
+  for (let i = 0; i < highs.length; i++) {
+    if (usedHighs.has(i)) continue;
+    const basePrice = candles[highs[i]].h;
+    const touches = [highs[i]];
+    for (let j = i + 1; j < highs.length; j++) {
+      if (usedHighs.has(j)) continue;
+      if (Math.abs(candles[highs[j]].h - basePrice) / basePrice <= tolerance) {
+        touches.push(highs[j]);
+        usedHighs.add(j);
+      }
+    }
+    usedHighs.add(i);
+    const price = touches.reduce((s, idx) => s + candles[idx].h, 0) / touches.length;
+    const lastIdx = touches[touches.length - 1];
+    const broken = lastPrice > price * (1 + tolerance);
+    levels.push({
+      type: price > lastPrice ? 'resistance' : 'support',
+      price,
+      strength: Math.min(5, touches.length),
+      index: offset + lastIdx,
+      broken,
+    });
+  }
+
+  // Cluster swing lows → support/resistance levels
+  const usedLows = new Set<number>();
+  for (let i = 0; i < lows.length; i++) {
+    if (usedLows.has(i)) continue;
+    const basePrice = candles[lows[i]].l;
+    const touches = [lows[i]];
+    for (let j = i + 1; j < lows.length; j++) {
+      if (usedLows.has(j)) continue;
+      if (Math.abs(candles[lows[j]].l - basePrice) / basePrice <= tolerance) {
+        touches.push(lows[j]);
+        usedLows.add(j);
+      }
+    }
+    usedLows.add(i);
+    const price = touches.reduce((s, idx) => s + candles[idx].l, 0) / touches.length;
+    const lastIdx = touches[touches.length - 1];
+    const broken = lastPrice < price * (1 - tolerance);
+    levels.push({
+      type: price < lastPrice ? 'support' : 'resistance',
+      price,
+      strength: Math.min(5, touches.length),
+      index: offset + lastIdx,
+      broken,
+    });
+  }
+
+  // Sort by recency, return up to 12 levels
+  return levels.sort((a, b) => b.index - a.index).slice(0, 12);
+}
+
+function detectSD(candles: Candle[], offset = 0): SDZone[] {
+  const zones: SDZone[] = [];
+  if (candles.length < 10) return zones;
+
+  // Average candle range for impulse comparison
+  const avgRange = candles.slice(-30).reduce((s, c) => s + (c.h - c.l), 0) / Math.min(30, candles.length);
+
+  for (let i = 1; i < candles.length - 2; i++) {
+    const base = candles[i];
+    const baseRange = base.h - base.l;
+    const baseBody = Math.abs(base.c - base.o);
+
+    // Base must be a small-range consolidation candle (indecision / inside bar)
+    if (baseRange === 0 || baseBody / baseRange > 0.55) continue;
+    if (baseRange > avgRange * 0.8) continue; // too large to be a base
+
+    const impulse = candles[i + 1];
+    const impBody = Math.abs(impulse.c - impulse.o);
+    const impRange = impulse.h - impulse.l;
+    if (impRange === 0 || impBody / impRange < 0.55) continue;
+    if (impRange < avgRange * 1.3) continue; // impulse must be strong
+
+    const tested = candles.slice(i + 2);
+
+    if (impulse.c < impulse.o) {
+      // Bearish impulse after base → Supply zone
+      const wasRetested = tested.some(c => c.h >= base.l && c.l <= base.h);
+      zones.push({
+        type: 'supply',
+        high: base.h,
+        low: base.l,
+        startIndex: offset + i,
+        tested: wasRetested,
+      });
+    } else {
+      // Bullish impulse after base → Demand zone
+      const wasRetested = tested.some(c => c.l <= base.h && c.h >= base.l);
+      zones.push({
+        type: 'demand',
+        high: base.h,
+        low: base.l,
+        startIndex: offset + i,
+        tested: wasRetested,
+      });
+    }
+  }
+
+  // Return up to 6 most recent untested zones first
+  return zones
+    .sort((a, b) => b.startIndex - a.startIndex)
+    .sort((a, b) => Number(a.tested) - Number(b.tested))
+    .slice(0, 6);
+}
+
 export function detectSMC(candles: Candle[], offset = 0): SMCData {
   if (candles.length < 15) {
-    return { orderBlocks: [], fvgZones: [], structureBreaks: [], liquidityLevels: [], pdZone: null, bias: 'neutral' };
+    return { orderBlocks: [], fvgZones: [], structureBreaks: [], liquidityLevels: [], pdZone: null, srLevels: [], sdZones: [], bias: 'neutral' };
   }
 
   const lastPrice = candles[candles.length - 1].c;
@@ -309,6 +442,8 @@ export function detectSMC(candles: Candle[], offset = 0): SMCData {
     structureBreaks: structureBreaks.slice(-4),
     liquidityLevels: detectLiquidity(candles, lastPrice, offset),
     pdZone: detectPDZone(candles, lastPrice),
+    srLevels: detectSR(candles, lastPrice, offset),
+    sdZones: detectSD(candles, offset),
     bias,
   };
 }

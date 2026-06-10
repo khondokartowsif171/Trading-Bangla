@@ -160,6 +160,8 @@ const INDICATOR_REGISTRY: IndicatorDef[] = [
   { id:'bos',       label:'BOS / CHoCH Structure',     category:'smc', renderType:'overlay', defaultParams:{}, color:'#00d4ff' },
   { id:'liquidity', label:'Liquidity Pools (EQH/EQL)', category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
   { id:'pdzone',    label:'Premium / Discount Zone',   category:'smc', renderType:'overlay', defaultParams:{}, color:'#a855f7' },
+  { id:'sr',        label:'Support & Resistance',      category:'smc', renderType:'overlay', defaultParams:{}, color:'#34d399' },
+  { id:'sd',        label:'Supply & Demand Zones',     category:'smc', renderType:'overlay', defaultParams:{}, color:'#f97316' },
   { id:'patterns',  label:'Candle Patterns',            category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
 ];
 
@@ -322,6 +324,8 @@ export default function ChartingTool({
   const showBOS       = activeIndicators.has('bos')        || showSMC || activeIndicators.has('smc');
   const showLiquidity = activeIndicators.has('liquidity')  || activeIndicators.has('smc');
   const showPDZone    = activeIndicators.has('pdzone')     || activeIndicators.has('smc');
+  const showSR        = activeIndicators.has('sr');
+  const showSD        = activeIndicators.has('sd');
 
   // Stable key for useEffect dependencies
   const activeIndicatorsKey = useMemo(() => [...activeIndicators].sort().join(','), [activeIndicators]);
@@ -563,10 +567,10 @@ export default function ChartingTool({
 
   // Real SMC analysis on visible candles
   const smcData = useMemo(() => {
-    const needsSMC = showSMC || showFVG || showOB || showBOS || showLiquidity || showPDZone;
+    const needsSMC = showSMC || showFVG || showOB || showBOS || showLiquidity || showPDZone || showSR || showSD;
     if (!needsSMC || visibleCandles.length < 15) return null;
     return detectSMC(visibleCandles, visibleStartIndex);
-  }, [visibleCandles, visibleStartIndex, showSMC, showFVG, showOB, showBOS, showLiquidity, showPDZone]);
+  }, [visibleCandles, visibleStartIndex, showSMC, showFVG, showOB, showBOS, showLiquidity, showPDZone, showSR, showSD]);
 
   // Candlestick pattern markers on visible window
   const patternMarkers = useMemo(() => {
@@ -866,6 +870,78 @@ export default function ChartingTool({
           ctx.fillStyle = '#00e676';
           ctx.fillText('DISC 25%', chartW - 58, discountY - 3);
         }
+      }
+
+      // Support & Resistance — horizontal lines with strength-based styling
+      if (showSR && smcData.srLevels) {
+        smcData.srLevels.forEach(lvl => {
+          const lY = toY(lvl.price);
+          if (lY < 0 || lY > charLayout.chartH) return;
+          const isRes = lvl.type === 'resistance';
+          const alpha = lvl.broken ? 0.25 : (0.4 + lvl.strength * 0.1);
+          const lineW = lvl.broken ? 0.5 : (0.6 + lvl.strength * 0.25);
+
+          // Line
+          ctx.strokeStyle = isRes ? `rgba(255,99,99,${alpha})` : `rgba(52,211,153,${alpha})`;
+          ctx.setLineDash(lvl.broken ? [3, 5] : lvl.strength >= 3 ? [] : [6, 3]);
+          ctx.lineWidth = lineW;
+          ctx.beginPath();
+          ctx.moveTo(0, lY);
+          ctx.lineTo(chartW, lY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Strength dots — filled circles proportional to strength
+          for (let d = 0; d < lvl.strength; d++) {
+            ctx.fillStyle = isRes ? `rgba(255,99,99,${alpha + 0.1})` : `rgba(52,211,153,${alpha + 0.1})`;
+            ctx.beginPath();
+            ctx.arc(chartW - 12 - d * 6, lY, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Label
+          ctx.fillStyle = isRes ? '#ff6363' : '#34d399';
+          const tag = `${isRes ? 'R' : 'S'}${lvl.strength > 1 ? `(${lvl.strength})` : ''}${lvl.broken ? ' ✗' : ''}`;
+          ctx.fillText(tag, 6, lY - 3);
+        });
+      }
+
+      // Supply & Demand Zones — shaded rectangles
+      if (showSD && smcData.sdZones) {
+        smcData.sdZones.forEach(zone => {
+          const si = zone.startIndex - visibleStartIndex;
+          const startX = chartW - (visibleCandles.length - si) * step;
+          const endX = chartW;
+          const topY = toY(zone.high);
+          const botY = toY(zone.low);
+          const zoneH = botY - topY;
+          if (zoneH <= 0 || startX > chartW) return;
+
+          const isSupply = zone.type === 'supply';
+          const baseAlpha = zone.tested ? 0.08 : 0.14;
+          const borderAlpha = zone.tested ? 0.3 : 0.6;
+
+          // Gradient fill
+          const grad = ctx.createLinearGradient(startX, 0, endX, 0);
+          if (isSupply) {
+            grad.addColorStop(0, `rgba(249,115,22,${baseAlpha + 0.06})`);
+            grad.addColorStop(1, `rgba(249,115,22,${baseAlpha})`);
+            ctx.strokeStyle = `rgba(249,115,22,${borderAlpha})`;
+          } else {
+            grad.addColorStop(0, `rgba(34,197,94,${baseAlpha + 0.06})`);
+            grad.addColorStop(1, `rgba(34,197,94,${baseAlpha})`);
+            ctx.strokeStyle = `rgba(34,197,94,${borderAlpha})`;
+          }
+          ctx.fillStyle = grad;
+          ctx.lineWidth = 1;
+          ctx.fillRect(startX, topY, endX - startX, zoneH);
+          ctx.strokeRect(startX, topY, endX - startX, zoneH);
+
+          // Label
+          ctx.fillStyle = isSupply ? '#fb923c' : '#4ade80';
+          const tag = `${isSupply ? 'Supply' : 'Demand'}${zone.tested ? ' (tested)' : ''}`;
+          ctx.fillText(tag, startX + 4, topY + 10);
+        });
       }
     }
 
