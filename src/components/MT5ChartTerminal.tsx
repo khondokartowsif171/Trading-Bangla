@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import SMCLiveChart from '@/components/SMCLiveChart';
+import AdvancedChart from '@/components/TradingView/AdvancedChart';
 import { getCandles, onCandleUpdate, seedHistoricalData, getPrice, startMarketData, stopMarketData } from '@/services/marketDataService';
 import { getRecentPatterns, CandlePattern } from '@/services/candlestickPatterns';
-import { analyzeSMC, SMCAnalysis, OHLCV } from '@/services/smcEngine';
+import { analyzeSMC, SMCAnalysis } from '@/services/smcEngine';
 import type { OHLCV as PatternOHLCV } from '@/services/candlestickPatterns';
 import {
   TrendingUp, TrendingDown, BarChart2, Activity, Layers, Zap,
@@ -233,7 +233,6 @@ export default function MT5ChartTerminal() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [patterns, setPatterns] = useState<CandlePattern[]>([]);
   const [smc, setSmc] = useState<SMCAnalysis | null>(null);
-  const [candles, setCandles] = useState<OHLCV[]>([]);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState(0);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -265,7 +264,6 @@ export default function MT5ChartTerminal() {
       time: typeof c.time === 'number' ? c.time : Number(c.time),
       open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
     }));
-    setCandles(candles as OHLCV[]);
     setPatterns(getRecentPatterns(candles, 6));
     setSmc(analyzeSMC(candles));
     const p = getPrice(symbol);
@@ -304,6 +302,12 @@ export default function MT5ChartTerminal() {
 
   const toggleSection = (sec: string) => setCollapsed(p => ({ ...p, [sec]: !p[sec] }));
 
+  // Build TradingView studies from active TV indicators
+  const tvStudies = [...activeIndicators]
+    .map(id => INDICATOR_CATALOG.find(i => i.id === id))
+    .filter((i): i is IndicatorDef => !!i && !!i.tvStudy && !i.custom)
+    .map(i => i.tvStudy!);
+  const uniqueStudies = [...new Set(tvStudies)];
 
   const filteredIndicators = INDICATOR_CATALOG.filter(i => {
     const matchCat = category === 'All' || i.category === category;
@@ -460,15 +464,13 @@ export default function MT5ChartTerminal() {
           )}
         </div>
 
-        {/* ── CENTER: SMC Live Chart ── */}
+        {/* ── CENTER: TradingView Chart ── */}
         <div className="flex-1 flex flex-col min-w-0">
-          <SMCLiveChart
+          <AdvancedChart
             symbol={symbol}
-            candles={candles}
-            smc={smc}
-            activeIndicators={activeIndicators}
-            darkMode={darkMode}
+            interval={timeframe}
             height="100%"
+            studies={uniqueStudies.length > 0 ? uniqueStudies : ['RSI@tv-basicstudies', 'MACD@tv-basicstudies', 'Volume@tv-basicstudies']}
           />
         </div>
 
