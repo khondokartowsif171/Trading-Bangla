@@ -150,6 +150,33 @@ export default function App() {
   const [alertNotify, setAlertNotify] = useState<string>('');
 
   // ── REAL-TIME LIVE FEEDS ──────────────────────────────────────────────────
+
+  // REST fallback — polls /api/oanda-prices every 5s (server-side fetch, no CORS issues)
+  // Acts as reliable backup when WebSocket is throttled or disconnected
+  useEffect(() => {
+    const fetchREST = async () => {
+      try {
+        const res = await fetch('/api/oanda-prices');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!Array.isArray(data.prices)) return;
+        for (const p of data.prices) {
+          const sym = (p.instrument as string).replace('_', '');
+          const bid = parseFloat(p.bids?.[0]?.price ?? '0');
+          const ask = parseFloat(p.asks?.[0]?.price ?? '0');
+          const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : (bid || ask);
+          if (mid > 0) {
+            liveRef.current[sym] = mid;
+            setIsAnyLive(true);
+          }
+        }
+      } catch { /* ignore — WebSocket or simulation will cover */ }
+    };
+    fetchREST();
+    const iv = setInterval(fetchREST, 5000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Gold-API.com — XAUUSD only (Binance MUST NOT touch gold)
   useEffect(() => {
     const fetchGold = async () => {
@@ -503,7 +530,9 @@ export default function App() {
   const lastCandle = activePair && activePair.sparkline && activePair.sparkline.length > 0 
     ? activePair.sparkline[activePair.sparkline.length - 1] 
     : null;
-  const curPrice = lastCandle ? lastCandle.c : (activePair?.base || 0);
+  // Show BID price in header (MT5 convention) = mid − half-spread, matching watchlist bid
+  const halfSpreadPrice = activePair ? (activePair.spread * activePair.pip / 2) : 0;
+  const curPrice = lastCandle ? (lastCandle.c - halfSpreadPrice) : (activePair?.base || 0);
   const isUp = lastCandle ? lastCandle.c >= activePair.base : true;
   const diffVal = lastCandle ? lastCandle.c - activePair.base : 0;
   const pctVal = lastCandle ? (diffVal / activePair.base) * 100 : 0;
