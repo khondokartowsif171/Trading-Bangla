@@ -656,8 +656,17 @@ export default function ChartingTool({
       return charLayout.chartH * (1 - (p - minPrice) / rng);
     };
 
+    // Symbol + timeframe watermark (MT5-style faint label in top-left)
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.font = 'bold 28px "DM Mono", monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${pair.sym}  ${timeframe}`, 12, 40);
+    ctx.restore();
+
     // 2. DRAW MAIN PRICE GRID LINES
-    ctx.strokeStyle = 'rgba(99, 118, 175, 0.08)';
+    ctx.strokeStyle = 'rgba(99, 118, 175, 0.13)';
     ctx.lineWidth = 0.5;
     const gridRows = 6;
     for (let i = 0; i <= gridRows; i++) {
@@ -692,6 +701,28 @@ export default function ChartingTool({
       ctx.fillStyle = '#7986cb';
       ctx.textAlign = 'center';
       ctx.fillText(label, posX, charLayout.chartH + 16);
+    }
+
+    // Day / session separators — vertical dotted lines where UTC date changes (MT5-style)
+    {
+      let lastDay = -1;
+      visibleCandles.forEach((c, i) => {
+        const d = Math.floor(c.t / 86400000);
+        if (lastDay !== -1 && d !== lastDay) {
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES - i) * step + candleW / 2;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(150, 170, 220, 0.28)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 5]);
+          ctx.beginPath();
+          ctx.moveTo(Math.round(posX) + 0.5, 0);
+          ctx.lineTo(Math.round(posX) + 0.5, charLayout.chartH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+        lastDay = d;
+      });
     }
 
     // Separators for Price view and bottom scale zones

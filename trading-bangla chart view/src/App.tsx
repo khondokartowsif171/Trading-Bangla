@@ -303,6 +303,7 @@ export default function App() {
             updatedClose = newest.c + shiftValue;
           }
 
+          newest.t = Date.now(); // keep current so aggregatedCandles tracks real TF period boundaries
           newest.c = Number(updatedClose.toFixed(config.dec));
           newest.h = Number(Math.max(newest.h, updatedClose).toFixed(config.dec));
           newest.l = Number(Math.min(newest.l, updatedClose).toFixed(config.dec));
