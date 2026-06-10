@@ -78,6 +78,8 @@ function seedCandles(baseClass: number, count = 200, pipValue = 0.0001): Candle[
 export default function App() {
   // Live price ref — updated by real API feeds, read by tick engine (no re-render)
   const liveRef = useRef<Record<string, number>>({});
+  // Tracks when each symbol's price was last updated — used to detect market-closed state
+  const liveTimestampRef = useRef<Record<string, number>>({});
   const [isAnyLive, setIsAnyLive] = useState(false);
 
   // 1. DYNAMIC ASSET SEED SEEDS
@@ -176,6 +178,7 @@ export default function App() {
           const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : (bid || ask);
           if (mid > 0) {
             liveRef.current[sym] = mid;
+            liveTimestampRef.current[sym] = Date.now();
             setIsAnyLive(true);
           }
         }
@@ -195,6 +198,7 @@ export default function App() {
         const price = Number(data?.items?.[0]?.xauPrice);
         if (price > 1000) {
           liveRef.current['XAUUSD'] = price;
+          liveTimestampRef.current['XAUUSD'] = Date.now();
           setIsAnyLive(true);
         }
       } catch { /* graceful fallback to simulation */ }
@@ -218,7 +222,7 @@ export default function App() {
           try {
             const d = JSON.parse(e.data);
             const price = parseFloat(d?.data?.c);
-            if (price > 0) { liveRef.current['BTCUSD'] = price; setIsAnyLive(true); }
+            if (price > 0) { liveRef.current['BTCUSD'] = price; liveTimestampRef.current['BTCUSD'] = Date.now(); setIsAnyLive(true); }
           } catch { /* ignore */ }
         };
         ws.onclose = () => {
@@ -256,7 +260,7 @@ export default function App() {
             if (d.event === 'price' && d.symbol && d.price) {
               const sym = (d.symbol as string).replace('/', '');
               const price = parseFloat(d.price);
-              if (price > 0) { liveRef.current[sym] = price; setIsAnyLive(true); }
+              if (price > 0) { liveRef.current[sym] = price; liveTimestampRef.current[sym] = Date.now(); setIsAnyLive(true); }
             }
           } catch { /* ignore */ }
         };
@@ -280,7 +284,8 @@ export default function App() {
   useEffect(() => {
     const runTick = () => {
       tickCounterRef.current += 1;
-      const shouldSpawnNewCandle = tickCounterRef.current % 35 === 0; // Speed up real-time candle spawning
+      const now = Date.now();
+      const M1_MS = 60000;
 
       setPairsMap((prevMap) => {
         const nextMap: Record<string, PairConfig> = {};
@@ -290,34 +295,33 @@ export default function App() {
           const list = [...config.sparkline];
           let newest = { ...list[list.length - 1] };
 
-          // Use live price if available, else simulate
+          // Determine if market is open: live price must exist AND have been updated within 60s
           const livePx = liveRef.current[symbolKey];
-          let updatedClose: number;
-          if (livePx !== undefined) {
-            // Real API price: add tiny noise for natural movement
-            const noise = (Math.random() - 0.5) * config.pip * 0.3;
-            updatedClose = livePx + noise;
-          } else {
-            // Simulation: random walk volatility drift
-            const shiftValue = (Math.random() - 0.49) * 1.4 * config.pip;
-            updatedClose = newest.c + shiftValue;
-          }
+          const liveAge = now - (liveTimestampRef.current[symbolKey] ?? 0);
+          const isMarketOpen = livePx !== undefined && liveAge < 60000;
 
-          newest.t = Date.now(); // keep current so aggregatedCandles tracks real TF period boundaries
+          // Real price when open; flat when closed — no random walk
+          const updatedClose = isMarketOpen ? livePx : newest.c;
+
+          // Seal at real clock-minute boundary (TradingView-style), only when market is open
+          const currentPeriod = Math.floor(now / M1_MS) * M1_MS;
+          const newestPeriod = Math.floor(newest.t / M1_MS) * M1_MS;
+          const shouldSpawnNewCandle = isMarketOpen && currentPeriod > newestPeriod;
+
+          newest.t = now; // keep current so aggregatedCandles tracks real TF period boundaries
           newest.c = Number(updatedClose.toFixed(config.dec));
           newest.h = Number(Math.max(newest.h, updatedClose).toFixed(config.dec));
           newest.l = Number(Math.min(newest.l, updatedClose).toFixed(config.dec));
           newest.v += Math.floor(Math.random() * 8 + 1);
 
           if (shouldSpawnNewCandle) {
-            // Seal previous and spawn new M1/M5 candle frame
-            const timestamp = Date.now();
+            // Seal previous and spawn new M1 candle at the real period boundary
             list.push({
-              t: timestamp,
-              o: newest.c,
-              h: newest.c,
-              l: newest.c,
-              c: newest.c,
+              t: currentPeriod,
+              o: updatedClose,
+              h: updatedClose,
+              l: updatedClose,
+              c: updatedClose,
               v: Math.floor(Math.random() * 200 + 30),
             });
             // Keep window size aligned
