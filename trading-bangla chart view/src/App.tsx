@@ -41,6 +41,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  BarChart2,
 } from 'lucide-react';
 
 // Seeder helper to generate realistic historical data drift
@@ -133,6 +134,14 @@ export default function App() {
   const [watchlistWidth, setWatchlistWidth] = useState<number>(285);
   const [tradePanelWidth, setTradePanelWidth] = useState<number>(315);
   const [analysisHeight, setAnalysisHeight] = useState<number>(260);
+
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   // 2. DETAILED DEMO BROKER PORTFOLIO BALANCE STATES
   const [account, setAccount] = useState<AccountState>({
@@ -514,6 +523,15 @@ export default function App() {
     setPositions([]);
   };
 
+  const handleSetBalance = (amount: number) => {
+    setAccount(prev => ({
+      ...prev,
+      balance: amount,
+      equity: amount + prev.floatingPnl,
+      freeMargin: amount - prev.usedMargin + prev.floatingPnl,
+    }));
+  };
+
   const flashNotification = (txt: string) => {
     setAlertNotify(txt);
     setTimeout(() => {
@@ -731,7 +749,7 @@ export default function App() {
         )}
 
         {/* 2. BODY IMMERSIVE CONTENT GRID */}
-        <div className="flex-1 flex overflow-hidden min-h-0 bg-[#090b11]">
+        <div className={`flex-1 flex overflow-hidden min-h-0 bg-[#090b11]${isMobile ? ' pb-12' : ''}`}>
           
           {/* Watchlist Collapsed Sidebar strip trigger */}
           {!showWatchlist && (
@@ -1070,11 +1088,11 @@ export default function App() {
           </main>
 
           {/* RIGHT COMPONENT: Trading transaction controls panel (Collapsible) */}
-          <aside 
+          <aside
             className={`transition-all duration-300 ease-in-out border-l border-white/10 bg-[#07090e]/95 flex flex-col shrink-0 select-none overflow-hidden opacity-100 ${
               !showTradePanel ? 'w-0 border-l-0 opacity-0 pointer-events-none' : ''
-            }`}
-            style={{ width: showTradePanel ? `${tradePanelWidth}px` : '0px' }}
+            }${isMobile && showTradePanel ? ' fixed inset-0 z-[55] !w-full border-l-0' : ''}`}
+            style={!isMobile ? { width: showTradePanel ? `${tradePanelWidth}px` : '0px' } : undefined}
           >
             <TradePanel
               pair={pairsMap[panel1SelectedSym]}
@@ -1088,6 +1106,7 @@ export default function App() {
               onClose={() => setShowTradePanel(false)}
               currentWidth={tradePanelWidth}
               onWidthChange={setTradePanelWidth}
+              onSetBalance={handleSetBalance}
             />
           </aside>
 
@@ -1111,6 +1130,39 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Mobile bottom navigation bar */}
+        {isMobile && (
+          <div className="fixed bottom-0 left-0 right-0 h-12 bg-[#07090e] border-t border-white/10 flex z-[60]">
+            <button
+              onClick={() => { setShowWatchlist(false); setShowTradePanel(false); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-sans font-bold uppercase tracking-wide transition ${
+                !showWatchlist && !showTradePanel ? 'text-cyan-400' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <BarChart2 className="w-4 h-4" />
+              <span>Chart</span>
+            </button>
+            <button
+              onClick={() => { setShowWatchlist(true); setShowTradePanel(false); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-sans font-bold uppercase tracking-wide transition ${
+                showWatchlist ? 'text-purple-400' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              <span>Watch</span>
+            </button>
+            <button
+              onClick={() => { setShowTradePanel(true); setShowWatchlist(false); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-sans font-bold uppercase tracking-wide transition ${
+                showTradePanel ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Trade</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

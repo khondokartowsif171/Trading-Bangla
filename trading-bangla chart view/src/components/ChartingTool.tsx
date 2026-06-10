@@ -3141,6 +3141,37 @@ export default function ChartingTool({
             onTouchEnd={handleOverlayTouchEnd}
             onTouchCancel={handleOverlayTouchEnd}
           />
+
+          {/* Chart Navigation Controls */}
+          <div className="absolute bottom-8 right-2 flex flex-col gap-1 z-20 pointer-events-auto select-none">
+            <button
+              onClick={() => setCandleW(w => Math.min(60, w + 3))}
+              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm font-bold flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
+              title="Zoom In"
+            >+</button>
+            <button
+              onClick={() => setCandleW(w => Math.max(1.8, w - 3))}
+              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm font-bold flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
+              title="Zoom Out"
+            >−</button>
+          </div>
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 pointer-events-auto select-none">
+            <button
+              onClick={() => { setForce100(false); setOffset(o => o + 10); }}
+              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
+              title="Pan Left (Older candles)"
+            >◀</button>
+            <button
+              onClick={() => { setOffset(0); setForce100(true); }}
+              className="px-2.5 h-7 rounded bg-indigo-900/80 border border-indigo-700/50 text-indigo-300 text-[9px] font-bold flex items-center justify-center hover:bg-indigo-800 hover:text-white transition active:scale-95"
+              title="Snap to latest candle"
+            >NOW</button>
+            <button
+              onClick={() => { setForce100(false); setOffset(o => Math.max(0, o - 10)); }}
+              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
+              title="Pan Right (Newer candles)"
+            >▶</button>
+          </div>
         </div>
 
         {/* Quick sidebar containing list of drawings */}

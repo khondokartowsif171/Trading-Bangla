@@ -82,6 +82,7 @@ interface TradePanelProps {
   onClose?: () => void;
   currentWidth?: number;
   onWidthChange?: (newWidth: number) => void;
+  onSetBalance?: (amount: number) => void;
 }
 
 export default function TradePanel({
@@ -96,6 +97,7 @@ export default function TradePanel({
   onClose,
   currentWidth,
   onWidthChange,
+  onSetBalance,
 }: TradePanelProps) {
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [lots, setLots] = useState<number>(1.0);
@@ -417,6 +419,28 @@ export default function TradePanel({
           )}
         </div>
       </div>
+
+      {/* BALANCE ADJUSTMENT PRESETS */}
+      {onSetBalance && (
+        <div className="bg-[#0e1424] px-3 py-2 border-b border-[#1b253b]">
+          <div className="text-[9px] text-gray-500 mb-1.5 uppercase tracking-wider font-bold">ব্যালেন্স পরিবর্তন করুন</div>
+          <div className="grid grid-cols-3 gap-1">
+            {[1000, 5000, 10000, 25000, 50000, 100000].map(amt => (
+              <button
+                key={amt}
+                onClick={() => onSetBalance(amt)}
+                className={`text-[9px] py-1 rounded border transition-colors font-mono ${
+                  account.balance === amt
+                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
+                    : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-500 hover:text-gray-200'
+                }`}
+              >
+                ${amt >= 1000 ? (amt / 1000) + 'K' : amt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. ORDER PLACEMENT PANEL */}
       <div className="p-3.5 space-y-3 bg-[#111625]/50 border-b border-[#1e273d]">
