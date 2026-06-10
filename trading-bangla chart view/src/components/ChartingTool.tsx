@@ -438,13 +438,14 @@ export default function ChartingTool({
 
       // Deterministic pseudo-random generation
       const isUp = seededRandom(idxSeed) > 0.495;
-      
-      // Scaling volatilies based on pair pip values to keep charts looking extremely realistic
+
+      // Volatility scales with sqrt of timeframe (Brownian motion: σ ∝ √T)
+      const tfScale = Math.sqrt(T);
       const bodyMultiplier = (seededRandom(idxSeed + 1) * 6.5 + 1.2); // body size in pips
       const wickMultiplier = (seededRandom(idxSeed + 2) * 5.0 + 0.5); // wick size in pips
 
-      const bodySize = bodyMultiplier * pip;
-      const wickSize = wickMultiplier * pip;
+      const bodySize = bodyMultiplier * pip * tfScale;
+      const wickSize = wickMultiplier * pip * tfScale;
 
       const c = lastClose;
       const o = isUp ? lastClose - bodySize : lastClose + bodySize;
