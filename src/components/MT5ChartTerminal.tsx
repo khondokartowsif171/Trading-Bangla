@@ -7,8 +7,8 @@ import { analyzeSMC, SMCAnalysis } from '@/services/smcEngine';
 import type { OHLCV as PatternOHLCV } from '@/services/candlestickPatterns';
 import {
   TrendingUp, TrendingDown, BarChart2, Activity, Layers, Zap,
-  ChevronDown, ChevronUp, Eye, EyeOff, Search, Star, RefreshCw,
-  Shield, Target, AlertTriangle, ArrowUpRight, ArrowDownRight, Minus,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Eye, EyeOff, Search, Star, RefreshCw,
+  Shield, Target, AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, PenLine,
 } from 'lucide-react';
 
 // ---- Indicator Catalog (100+ indicators) ----
@@ -143,6 +143,54 @@ const INDICATOR_CATALOG: IndicatorDef[] = [
 
 const CATEGORIES = ['All', 'Trend', 'Oscillators', 'Volume', 'Volatility', 'Smart Money', 'Patterns', 'S&R'];
 
+// ---- Drawing Tools Catalog ----
+interface DrawingToolDef {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+}
+
+const DRAWING_TOOLS_CATALOG: DrawingToolDef[] = [
+  // Lines
+  { id: 'DT_TREND', name: 'Trend Line', category: 'Lines', icon: '↗', description: 'Draw a trend line across two points' },
+  { id: 'DT_HLINE', name: 'Horizontal Line', category: 'Lines', icon: '—', description: 'Horizontal level across the chart' },
+  { id: 'DT_VLINE', name: 'Vertical Line', category: 'Lines', icon: '|', description: 'Vertical time marker' },
+  { id: 'DT_EXTLINE', name: 'Extended Line', category: 'Lines', icon: '⟷', description: 'Line extended in both directions' },
+  { id: 'DT_RAY', name: 'Ray', category: 'Lines', icon: '→', description: 'One-directional line from a point' },
+  { id: 'DT_CROSS', name: 'Cross Line', category: 'Lines', icon: '✚', description: 'Cross-hair at a price/time intersection' },
+  { id: 'DT_ARROW', name: 'Arrow', category: 'Lines', icon: '⇧', description: 'Directional arrow annotation' },
+  // Fibonacci
+  { id: 'DT_FIB_RET', name: 'Fibonacci Retracement', category: 'Fibonacci', icon: 'F', description: 'Key Fibonacci retracement levels' },
+  { id: 'DT_FIB_EXT', name: 'Fibonacci Extension', category: 'Fibonacci', icon: 'F+', description: 'Fibonacci extension levels beyond swing' },
+  { id: 'DT_FIB_TZ', name: 'Fibonacci Time Zones', category: 'Fibonacci', icon: '⌛', description: 'Time-based Fibonacci intervals' },
+  { id: 'DT_FIB_FAN', name: 'Fibonacci Fan', category: 'Fibonacci', icon: '⊿', description: 'Fan lines from swing point at Fibonacci angles' },
+  { id: 'DT_FIB_ARC', name: 'Fibonacci Arc', category: 'Fibonacci', icon: '◠', description: 'Fibonacci-based arc levels' },
+  { id: 'DT_FIB_SPIRAL', name: 'Fibonacci Spiral', category: 'Fibonacci', icon: '@', description: 'Spiral based on Fibonacci sequence' },
+  // Channels
+  { id: 'DT_PCHANNEL', name: 'Parallel Channel', category: 'Channels', icon: '=', description: 'Two parallel trend lines forming a channel' },
+  { id: 'DT_RCHANNEL', name: 'Regression Channel', category: 'Channels', icon: '~', description: 'Statistical regression channel' },
+  { id: 'DT_DCHANNEL', name: 'Disjoint Channel', category: 'Channels', icon: '[]', description: 'Separate upper and lower channel lines' },
+  { id: 'DT_PITCHFORK', name: 'Pitchfork', category: 'Channels', icon: 'Y', description: "Andrew's Pitchfork median + parallel lines" },
+  // Gann
+  { id: 'DT_GANN_BOX', name: 'Gann Box', category: 'Gann', icon: '⬜', description: 'Gann Square / Box with angles' },
+  { id: 'DT_GANN_FAN', name: 'Gann Fan', category: 'Gann', icon: '⊞', description: 'Gann Fan angles from a pivot point' },
+  { id: 'DT_GANN_SQ', name: 'Gann Square of 9', category: 'Gann', icon: '9', description: 'Gann Square of 9 grid' },
+  // Shapes
+  { id: 'DT_RECT', name: 'Rectangle', category: 'Shapes', icon: '▭', description: 'Draw a rectangular zone' },
+  { id: 'DT_CIRCLE', name: 'Circle / Ellipse', category: 'Shapes', icon: '○', description: 'Draw a circle or ellipse zone' },
+  { id: 'DT_TRIANGLE', name: 'Triangle', category: 'Shapes', icon: '△', description: 'Draw a triangle pattern' },
+  { id: 'DT_BRUSH', name: 'Brush', category: 'Shapes', icon: '/', description: 'Freehand brush annotation' },
+  { id: 'DT_HIGHLIGHT', name: 'Highlighter', category: 'Shapes', icon: '▓', description: 'Highlight a zone with a color fill' },
+  // Text & Labels
+  { id: 'DT_TEXT', name: 'Text', category: 'Text', icon: 'T', description: 'Add a text annotation to the chart' },
+  { id: 'DT_CALLOUT', name: 'Callout / Note', category: 'Text', icon: '..', description: 'Callout bubble note with leader line' },
+  { id: 'DT_PRICE_LABEL', name: 'Price Label', category: 'Text', icon: '$', description: 'Floating price label at a level' },
+];
+
+const DRAWING_CATEGORIES = ['Lines', 'Fibonacci', 'Channels', 'Gann', 'Shapes', 'Text'];
+
 const SYMBOLS = ['XAU/USD', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF', 'USD/CAD', 'NZD/USD', 'GBP/JPY', 'EUR/JPY', 'EUR/GBP', 'BTC/USD', 'ETH/USD'];
 const TIMEFRAMES = [
   { label: '1m', tv: '1' },
@@ -222,6 +270,37 @@ function IndicatorRow({ ind, activeIndicators, favoriteIndicators, toggleIndicat
   );
 }
 
+interface DrawingToolRowProps {
+  tool: DrawingToolDef;
+  favoriteDrawingTools: Set<string>;
+  toggleDrawingFavorite: (id: string, e: React.MouseEvent) => void;
+  darkMode: boolean;
+  border: string;
+}
+
+function DrawingToolRow({ tool, favoriteDrawingTools, toggleDrawingFavorite, darkMode, border }: DrawingToolRowProps) {
+  const isFav = favoriteDrawingTools.has(tool.id);
+  return (
+    <div
+      title={tool.description}
+      className={`flex items-center gap-1.5 px-2 py-1.5 border-b last:border-b-0 ${border} ${darkMode ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50'} cursor-default`}>
+      <span className={`w-5 text-center text-[11px] flex-shrink-0 font-mono ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{tool.icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[10px] font-semibold truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          {tool.name}
+        </div>
+      </div>
+      <button
+        onClick={(e) => toggleDrawingFavorite(tool.id, e)}
+        className={`text-[11px] flex-shrink-0 transition-colors ${isFav ? 'text-amber-400' : 'text-gray-600 hover:text-amber-400'}`}
+        title={isFav ? 'Unfavorite' : 'Add to favorites'}
+      >
+        {isFav ? '★' : '☆'}
+      </button>
+    </div>
+  );
+}
+
 export default function MT5ChartTerminal() {
   const { darkMode, lang } = useApp();
   const isBn = lang === 'bn';
@@ -245,6 +324,15 @@ export default function MT5ChartTerminal() {
       return new Set(s ? JSON.parse(s) : []);
     } catch { return new Set(); }
   });
+  const [activePanel, setActivePanel] = useState<'indicators' | 'drawing'>('indicators');
+  const [favoriteDrawingTools, setFavoriteDrawingTools] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('tb_fav_drawing');
+      return new Set(s ? JSON.parse(s) : []);
+    } catch { return new Set(); }
+  });
+  const [drawingSearch, setDrawingSearch] = useState('');
+  const [drawingCollapsed, setDrawingCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     startMarketData();
@@ -301,6 +389,16 @@ export default function MT5ChartTerminal() {
   };
 
   const toggleSection = (sec: string) => setCollapsed(p => ({ ...p, [sec]: !p[sec] }));
+
+  const toggleDrawingFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteDrawingTools(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem('tb_fav_drawing', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   // Build TradingView studies from active TV indicators
   const tvStudies = [...activeIndicators]
@@ -386,14 +484,43 @@ export default function MT5ChartTerminal() {
       {/* ── MAIN LAYOUT ── */}
       <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
 
-        {/* ── LEFT: Indicator Library ── */}
-        <div className={`flex-shrink-0 border-r ${border} flex flex-col transition-all duration-200 ${leftOpen ? 'w-56' : 'w-8'}`}>
-          <button onClick={() => setLeftOpen(p => !p)}
-            className={`flex items-center justify-between px-2 py-2 text-[10px] font-bold uppercase tracking-wider border-b ${border} ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-50'}`}>
-            {leftOpen ? <><Layers className="w-3 h-3 text-indigo-400" /><span className="ml-1">Indicators</span><span className="ml-auto text-indigo-400">{activeIndicators.size}</span></> : <Layers className="w-3 h-3 text-indigo-400 mx-auto" />}
-          </button>
+        {/* ── LEFT: Indicator Library + Drawing Tools ── */}
+        <div className={`flex-shrink-0 border-r ${border} flex flex-col transition-all duration-200 ${leftOpen ? 'w-56' : 'w-10'}`}>
 
-          {leftOpen && (
+          {/* Tab bar: Indicators | Drawing | Collapse */}
+          <div className={`flex border-b ${border} flex-shrink-0`}>
+            {leftOpen ? (
+              <>
+                <button onClick={() => setActivePanel('indicators')}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 text-[9px] font-bold uppercase tracking-wider transition-all border-b-2 ${activePanel === 'indicators' ? 'text-indigo-400 border-indigo-500' : `border-transparent ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}`}>
+                  <Layers className="w-3 h-3" />
+                  <span>Ind <span className={activePanel === 'indicators' ? 'text-indigo-400' : ''}>{activeIndicators.size}</span></span>
+                </button>
+                <button onClick={() => setActivePanel('drawing')}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 text-[9px] font-bold uppercase tracking-wider transition-all border-b-2 ${activePanel === 'drawing' ? 'text-amber-400 border-amber-500' : `border-transparent ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}`}>
+                  <PenLine className="w-3 h-3" />
+                  <span>Draw{favoriteDrawingTools.size > 0 ? <span className="text-amber-400"> {favoriteDrawingTools.size}★</span> : ''}</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center py-1 gap-1 w-full">
+                <button onClick={() => { setLeftOpen(true); setActivePanel('indicators'); }} title="Indicators" className={`p-1 rounded ${darkMode ? 'text-indigo-400 hover:bg-gray-800' : 'text-indigo-500 hover:bg-gray-100'}`}>
+                  <Layers className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => { setLeftOpen(true); setActivePanel('drawing'); }} title="Drawing Tools" className={`p-1 rounded ${darkMode ? 'text-amber-400 hover:bg-gray-800' : 'text-amber-500 hover:bg-gray-100'}`}>
+                  <PenLine className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            <button onClick={() => setLeftOpen(p => !p)}
+              className={`px-1.5 flex items-center ${darkMode ? 'text-gray-600 hover:bg-gray-800 hover:text-gray-400' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+              title={leftOpen ? 'Collapse panel' : 'Expand panel'}>
+              {leftOpen ? <ChevronLeft className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            </button>
+          </div>
+
+          {/* ── INDICATORS PANEL ── */}
+          {activePanel === 'indicators' && leftOpen && (
             <div className="flex-1 overflow-y-auto">
               {/* Search */}
               <div className={`px-2 py-1.5 border-b ${border}`}>
@@ -459,6 +586,66 @@ export default function MT5ChartTerminal() {
               {/* Count */}
               <div className={`px-2 py-2 text-[9px] text-center ${sub}`}>
                 {INDICATOR_CATALOG.length} indicators total · {activeIndicators.size} active
+              </div>
+            </div>
+          )}
+
+          {/* ── DRAWING TOOLS PANEL ── */}
+          {activePanel === 'drawing' && leftOpen && (
+            <div className="flex-1 overflow-y-auto">
+              {/* Search */}
+              <div className={`px-2 py-1.5 border-b ${border}`}>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                  <Search className="w-3 h-3 text-gray-500" />
+                  <input value={drawingSearch} onChange={e => setDrawingSearch(e.target.value)} placeholder="Search tools..." className={`text-[10px] bg-transparent outline-none w-full ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`} />
+                </div>
+              </div>
+
+              {/* Drawing Favorites */}
+              {favoriteDrawingTools.size > 0 && !drawingSearch && (
+                <div>
+                  <div className={`flex items-center gap-1 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider border-b ${border} text-amber-400`}>
+                    <Star className="w-2.5 h-2.5 fill-amber-400" />
+                    Favorites ({favoriteDrawingTools.size})
+                  </div>
+                  {DRAWING_TOOLS_CATALOG.filter(t => favoriteDrawingTools.has(t.id)).map(t => (
+                    <DrawingToolRow key={t.id} tool={t} favoriteDrawingTools={favoriteDrawingTools}
+                      toggleDrawingFavorite={toggleDrawingFavorite} darkMode={darkMode} border={border} />
+                  ))}
+                </div>
+              )}
+
+              {/* Tools by category */}
+              {DRAWING_CATEGORIES.map(cat => {
+                const items = DRAWING_TOOLS_CATALOG.filter(t => t.category === cat && (!drawingSearch || t.name.toLowerCase().includes(drawingSearch.toLowerCase())));
+                if (items.length === 0) return null;
+                const isCollapsed = drawingCollapsed[cat];
+                return (
+                  <div key={cat}>
+                    <button onClick={() => setDrawingCollapsed(p => ({ ...p, [cat]: !p[cat] }))}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider border-b ${border} ${darkMode ? 'text-gray-500 hover:bg-gray-800/50' : 'text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="flex items-center gap-1">
+                        {cat === 'Lines' && <span className="text-blue-400 text-[10px]">╱</span>}
+                        {cat === 'Fibonacci' && <span className="text-yellow-400 text-[10px] font-mono">F</span>}
+                        {cat === 'Channels' && <span className="text-purple-400 text-[10px]">=</span>}
+                        {cat === 'Gann' && <span className="text-orange-400 text-[10px]">G</span>}
+                        {cat === 'Shapes' && <span className="text-cyan-400 text-[10px]">○</span>}
+                        {cat === 'Text' && <span className="text-green-400 text-[10px] font-bold">T</span>}
+                        {cat}
+                      </span>
+                      {isCollapsed ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronUp className="w-2.5 h-2.5" />}
+                    </button>
+                    {!isCollapsed && items.map(t => (
+                      <DrawingToolRow key={t.id} tool={t} favoriteDrawingTools={favoriteDrawingTools}
+                        toggleDrawingFavorite={toggleDrawingFavorite} darkMode={darkMode} border={border} />
+                    ))}
+                  </div>
+                );
+              })}
+
+              {/* Footer note */}
+              <div className={`px-2 py-2 text-[9px] text-center ${sub}`}>
+                {DRAWING_TOOLS_CATALOG.length} tools · Select in TradingView toolbar →
               </div>
             </div>
           )}
