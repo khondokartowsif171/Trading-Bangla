@@ -111,6 +111,7 @@ export default function TradePanel({
   const [tpValue, setTpValue] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'backtest'>('positions');
+  const [orderFormHeight, setOrderFormHeight] = useState(260);
 
   // Backtest state
   const [backtestStrategy, setBacktestStrategy] = useState<BacktestStrategy>('fvg_bounce');
@@ -420,21 +421,42 @@ export default function TradePanel({
         </div>
       </div>
 
-      {/* BALANCE ADJUSTMENT PRESETS */}
+      {/* BALANCE CUSTOM INPUT */}
       {onSetBalance && (
         <div className="bg-[#0e1424] px-3 py-2 border-b border-[#1b253b]">
           <div className="text-[9px] text-gray-500 mb-1.5 uppercase tracking-wider font-bold">ব্যালেন্স পরিবর্তন করুন</div>
-          <div className="grid grid-cols-3 gap-1">
-            {[1000, 5000, 10000, 25000, 50000, 100000].map(amt => (
-              <button
-                key={amt}
-                onClick={() => onSetBalance(amt)}
-                className={`text-[9px] py-1 rounded border transition-colors font-mono ${
-                  account.balance === amt
-                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                    : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-500 hover:text-gray-200'
-                }`}
-              >
+          <div className="flex gap-1.5 mb-1.5">
+            <input
+              type="number"
+              min={100}
+              max={10000000}
+              step={100}
+              defaultValue={Math.round(account.balance)}
+              key={Math.round(account.balance)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const v = parseFloat((e.target as HTMLInputElement).value);
+                  if (v > 0) onSetBalance(v);
+                }
+              }}
+              className="flex-1 bg-[#070b12] border border-[#1b253b] rounded px-2 py-1 text-[11px] text-white font-mono focus:outline-none focus:border-indigo-500 min-w-0"
+              placeholder="যেকোনো পরিমাণ..."
+            />
+            <button
+              onClick={e => {
+                const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
+                const v = parseFloat(input.value);
+                if (v > 0) onSetBalance(v);
+              }}
+              className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-500 text-white text-[9px] font-bold rounded border border-indigo-700/50 transition shrink-0"
+            >
+              SET
+            </button>
+          </div>
+          <div className="flex gap-1">
+            {[1000, 5000, 10000, 50000].map(amt => (
+              <button key={amt} onClick={() => onSetBalance(amt)}
+                className="flex-1 text-[8px] py-0.5 rounded border border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-500 hover:text-gray-200 font-mono transition">
                 ${amt >= 1000 ? (amt / 1000) + 'K' : amt}
               </button>
             ))}
@@ -443,7 +465,8 @@ export default function TradePanel({
       )}
 
       {/* 2. ORDER PLACEMENT PANEL */}
-      <div className="p-3.5 space-y-3 bg-[#111625]/50 border-b border-[#1e273d]">
+      <div className="bg-[#111625]/50 border-b border-[#1e273d] overflow-y-auto shrink-0" style={{ height: orderFormHeight }}>
+      <div className="p-3.5 space-y-3">
         <div className="flex bg-gray-900/60 p-1 rounded-lg">
           <button
             onClick={() => setTradeType('BUY')}
@@ -653,9 +676,33 @@ export default function TradePanel({
           </span>
         </button>
       </div>
+      </div>
+
+      {/* Vertical resize handle — drag to adjust order form vs. positions heights */}
+      <div
+        className="h-2 bg-[#1b253b] hover:bg-indigo-500/50 cursor-row-resize shrink-0 flex items-center justify-center group transition-colors select-none"
+        onMouseDown={e => {
+          const startY = e.clientY;
+          const startH = orderFormHeight;
+          const onMove = (ev: MouseEvent) => {
+            const delta = ev.clientY - startY;
+            setOrderFormHeight(Math.max(160, Math.min(520, startH + delta)));
+          };
+          const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+          e.preventDefault();
+        }}
+        title="Drag to resize"
+      >
+        <div className="w-10 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
+      </div>
 
       {/* 3. SIMULATED OPEN POSITIONS & RECENT CLOSED POSITIONS TRACE */}
-      <div className="flex-1 flex flex-col overflow-hidden min-h-[200px]">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         
         {/* Tab selector */}
         <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-gray-950/20">

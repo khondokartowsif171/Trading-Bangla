@@ -491,6 +491,9 @@ export default function ChartingTool({
     return aggregatedCandles;
   }, [aggregatedCandles, chartType]);
 
+  // Right-side empty space (like TradingView: ~5 candle slots of blank space after last candle)
+  const RIGHT_MARGIN_CANDLES = 5;
+
   // Map indexes securely
   const totalCount = processedCandles.length;
   const maxVisibleCount = Math.floor((charLayout.W - charLayout.priceW) / (candleW + 2));
@@ -585,7 +588,7 @@ export default function ChartingTool({
 
     // Map logical candle index to pixel x
     const idxInVisible = index - visibleStartIndex;
-    const x = chartW - (visibleCandles.length - idxInVisible) * step + candleW / 2;
+    const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idxInVisible) * step + candleW / 2;
 
     // Map logical price to pixel y
     const prRng = maxPrice - minPrice || 0.0001;
@@ -605,8 +608,8 @@ export default function ChartingTool({
     const chartW = charLayout.W - charLayout.priceW;
     const step = candleW + 2;
 
-    // Calculate index
-    const totalVisW = visibleCandles.length * step;
+    // Calculate index (account for right margin so click coords match drawn positions)
+    const totalVisW = (visibleCandles.length + RIGHT_MARGIN_CANDLES) * step;
     const startX = chartW - totalVisW;
     const localIdx = Math.floor((x - startX) / step);
     const index = Math.max(visibleStartIndex, Math.min(visibleEndIndex - 1, visibleStartIndex + localIdx));
@@ -677,7 +680,7 @@ export default function ChartingTool({
     const tickStep = Math.max(1, Math.floor(visibleCandles.length / verticalTicks));
     for (let i = 0; i < visibleCandles.length; i += tickStep) {
       const c = visibleCandles[i];
-      const posX = chartW - (visibleCandles.length - i) * step + candleW / 2;
+      const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -i) * step + candleW / 2;
       ctx.beginPath();
       ctx.moveTo(Math.round(posX) + 0.5, 0);
       ctx.lineTo(Math.round(posX) + 0.5, charLayout.chartH);
@@ -711,7 +714,7 @@ export default function ChartingTool({
       if (showFVG) {
         smcData.fvgZones.forEach(fvg => {
           if (fvg.filled) return;
-          const startX = chartW - (visibleCandles.length - (fvg.startIndex - visibleStartIndex)) * step;
+          const startX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -(fvg.startIndex - visibleStartIndex)) * step;
           const endX = chartW; // extend to right edge
           const topY = toY(fvg.top);
           const botY = toY(fvg.bottom);
@@ -754,8 +757,8 @@ export default function ChartingTool({
         smcData.orderBlocks.forEach(ob => {
           const si = ob.startIndex - visibleStartIndex;
           const ei = ob.endIndex - visibleStartIndex;
-          const startX = chartW - (visibleCandles.length - si) * step;
-          const endX = Math.min(chartW - 4, chartW - (visibleCandles.length - Math.min(ei, visibleCandles.length)) * step);
+          const startX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -si) * step;
+          const endX = Math.min(chartW - 4, chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -Math.min(ei, visibleCandles.length)) * step);
           const topY = toY(ob.high);
           const botY = toY(ob.low);
           if (endX <= startX) return;
@@ -910,7 +913,7 @@ export default function ChartingTool({
       if (showSD && smcData.sdZones) {
         smcData.sdZones.forEach(zone => {
           const si = zone.startIndex - visibleStartIndex;
-          const startX = chartW - (visibleCandles.length - si) * step;
+          const startX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -si) * step;
           const endX = chartW;
           const topY = toY(zone.high);
           const botY = toY(zone.low);
@@ -958,7 +961,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const bVal = bbBands.upper[actualIdx];
         if (bVal !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!started) {
             ctx.moveTo(posX, toY(bVal));
             started = true;
@@ -976,7 +979,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const bVal = bbBands.lower[actualIdx];
         if (bVal !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!hasLower) {
             ctx.moveTo(posX, toY(bVal));
             hasLower = true;
@@ -989,7 +992,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const bVal = bbBands.upper[actualIdx];
         if (bVal !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           ctx.lineTo(posX, toY(bVal));
         }
       }
@@ -1004,7 +1007,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const bVal = bbBands.lower[actualIdx];
         if (bVal !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!bottomStarted) {
             ctx.moveTo(posX, toY(bVal));
             bottomStarted = true;
@@ -1026,7 +1029,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = ma20Line[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!started) {
             ctx.moveTo(posX, toY(val));
             started = true;
@@ -1047,7 +1050,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = ma50Line[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!started) {
             ctx.moveTo(posX, toY(val));
             started = true;
@@ -1068,7 +1071,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = ema9Line[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!started) {
             ctx.moveTo(posX, toY(val));
             started = true;
@@ -1089,7 +1092,7 @@ export default function ChartingTool({
       visibleCandles.forEach((_c, idx) => {
         const val = values[visibleStartIndex + idx];
         if (val == null) return;
-        const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         if (!s) { ctx.moveTo(posX, toY(val)); s = true; } else { ctx.lineTo(posX, toY(val)); }
       });
       ctx.stroke();
@@ -1109,8 +1112,8 @@ export default function ChartingTool({
         const v1 = superTrendData.value[ai - 1], v2 = superTrendData.value[ai];
         const d2 = superTrendData.direction[ai];
         if (v1 == null || v2 == null || d2 == null) return;
-        const x1 = chartW - (visibleCandles.length - idx + 1) * step + candleW / 2;
-        const x2 = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const x1 = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx + 1) * step + candleW / 2;
+        const x2 = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         ctx.strokeStyle = d2 ? 'rgba(0,230,118,0.85)' : 'rgba(255,61,87,0.85)';
         ctx.beginPath();
         ctx.moveTo(x1, toY(v1));
@@ -1128,13 +1131,13 @@ export default function ChartingTool({
       ctx.beginPath();
       kUpper.forEach((v, i) => {
         if (v == null) return;
-        const x = chartW - (visibleCandles.length - i) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -i) * step + candleW / 2;
         i === 0 || kUpper[i-1] == null ? ctx.moveTo(x, toY(v)) : ctx.lineTo(x, toY(v));
       });
       kLower.slice().reverse().forEach((v, i) => {
         const ri = kLower.length - 1 - i;
         if (v == null) return;
-        const x = chartW - (visibleCandles.length - ri) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -ri) * step + candleW / 2;
         ctx.lineTo(x, toY(v));
       });
       ctx.closePath();
@@ -1144,7 +1147,7 @@ export default function ChartingTool({
         ctx.beginPath(); ctx.strokeStyle = col; ctx.lineWidth = 1.2;
         arr.forEach((v, i) => {
           if (v == null) return;
-          const x = chartW - (visibleCandles.length - i) * step + candleW / 2;
+          const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -i) * step + candleW / 2;
           i === 0 || arr[i-1] == null ? ctx.moveTo(x, toY(v)) : ctx.lineTo(x, toY(v));
         });
         ctx.stroke();
@@ -1188,7 +1191,7 @@ export default function ChartingTool({
       const volAreaH = charLayout.chartH * 0.16;
 
       visibleCandles.forEach((c, idx) => {
-        const posX = chartW - (visibleCandles.length - idx) * step;
+        const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step;
         const hVal = (c.v / vHigh) * volAreaH;
         const posY = charLayout.chartH - hVal;
         
@@ -1199,7 +1202,7 @@ export default function ChartingTool({
 
     // 7. RENDER PRIMARY BANDS / CANDLES / SHAPES
     visibleCandles.forEach((c, idx) => {
-      const posX = chartW - (visibleCandles.length - idx) * step;
+      const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step;
       const cx = posX + candleW / 2;
       const bW = Math.max(1.5, candleW * 0.75);
 
@@ -1209,7 +1212,7 @@ export default function ChartingTool({
       if (chartType === 'line') {
         const nextIdx = idx + 1;
         if (nextIdx < visibleCandles.length) {
-          const nextCx = chartW - (visibleCandles.length - nextIdx) * step + candleW / 2;
+          const nextCx = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -nextIdx) * step + candleW / 2;
           ctx.strokeStyle = '#00d4ff';
           ctx.lineWidth = 1.8;
           ctx.beginPath();
@@ -1220,7 +1223,7 @@ export default function ChartingTool({
       } else if (chartType === 'area') {
         const nextIdx = idx + 1;
         if (nextIdx < visibleCandles.length) {
-          const nextCx = chartW - (visibleCandles.length - nextIdx) * step + candleW / 2;
+          const nextCx = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -nextIdx) * step + candleW / 2;
           ctx.strokeStyle = '#00d4ff';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
@@ -1296,7 +1299,7 @@ export default function ChartingTool({
     if (showPatterns && patternMarkers.length > 0) {
       ctx.font = 'bold 8px "DM Mono", monospace';
       patternMarkers.forEach(pm => {
-        const posX = chartW - (visibleCandles.length - pm.index) * step + candleW / 2;
+        const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -pm.index) * step + candleW / 2;
         if (posX < 0 || posX > chartW) return;
         if (pm.type === 'bullish') {
           // Triangle below candle
@@ -1343,7 +1346,7 @@ export default function ChartingTool({
         const ai = visibleStartIndex + idx;
         const sar = sarValues[ai];
         if (sar == null) return;
-        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         const y = toY(sar);
         const isBull = sar < c.l;
         ctx.beginPath();
@@ -1361,7 +1364,7 @@ export default function ChartingTool({
       visibleCandles.forEach((_c, idx) => {
         const v = values[visibleStartIndex + idx];
         if (v == null) return;
-        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         if (!s) { ctx.moveTo(x, toY(v)); s = true; } else { ctx.lineTo(x, toY(v)); }
       });
       ctx.stroke();
@@ -1703,7 +1706,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = rsiValues[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (rsiIdx === 0) {
             ctx.moveTo(posX, rsiToY(val));
           } else {
@@ -1748,7 +1751,7 @@ export default function ChartingTool({
       visibleCandles.forEach((_c, idx) => {
         const v = cciValues[visibleStartIndex + idx];
         if (v == null) return;
-        const px = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const px = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         if (!cs) { ctx.moveTo(px, cciToY(v)); cs = true; } else { ctx.lineTo(px, cciToY(v)); }
       });
       ctx.stroke();
@@ -1800,7 +1803,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = macdData.hist[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step;
           const cx = posX + candleW / 2;
           const hW = Math.max(1, candleW * 0.6);
           
@@ -1822,7 +1825,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = macdData.macd[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!startedMacd) {
             ctx.moveTo(posX, macdToY(val));
             startedMacd = true;
@@ -1842,7 +1845,7 @@ export default function ChartingTool({
         const actualIdx = visibleStartIndex + idx;
         const val = macdData.signal[actualIdx];
         if (val !== null) {
-          const posX = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+          const posX = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
           if (!startedSignal) {
             ctx.moveTo(posX, macdToY(val));
             startedSignal = true;
@@ -1870,7 +1873,7 @@ export default function ChartingTool({
       visibleCandles.forEach((_c, idx) => {
         const v = vals[visibleStartIndex + idx];
         if (v == null) return;
-        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         if (!started) { ctx.moveTo(x, toSubY(v)); started = true; } else { ctx.lineTo(x, toSubY(v)); }
       });
       ctx.stroke();
@@ -1945,7 +1948,7 @@ export default function ChartingTool({
       visibleCandles.forEach((_c, idx) => {
         const v = obvValues[visibleStartIndex + idx] as number;
         if (v == null) return;
-        const x = chartW - (visibleCandles.length - idx) * step + candleW / 2;
+        const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step + candleW / 2;
         const y2 = yS + pH - ((v - obvMin) / obvRange) * pH;
         if (firstX2 < 0) { ctx.moveTo(x, yS + pH); ctx.lineTo(x, y2); firstX2 = x; } else { ctx.lineTo(x, y2); }
       });
@@ -1996,7 +1999,7 @@ export default function ChartingTool({
         visibleCandles.forEach((_c, idx) => {
           const v = vals[visibleStartIndex + idx];
           if (v == null) return;
-          const x = chartW - (visibleCandles.length - idx) * step;
+          const x = chartW - (visibleCandles.length + RIGHT_MARGIN_CANDLES -idx) * step;
           const barH = (Math.abs(v) / absMax) * (pH / 2);
           const barY = v >= 0 ? zeroY - barH : zeroY;
           ctx.fillStyle = v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
@@ -3142,36 +3145,6 @@ export default function ChartingTool({
             onTouchCancel={handleOverlayTouchEnd}
           />
 
-          {/* Chart Navigation Controls */}
-          <div className="absolute bottom-8 right-2 flex flex-col gap-1 z-20 pointer-events-auto select-none">
-            <button
-              onClick={() => setCandleW(w => Math.min(60, w + 3))}
-              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm font-bold flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
-              title="Zoom In"
-            >+</button>
-            <button
-              onClick={() => setCandleW(w => Math.max(1.8, w - 3))}
-              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm font-bold flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
-              title="Zoom Out"
-            >−</button>
-          </div>
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-1 z-20 pointer-events-auto select-none">
-            <button
-              onClick={() => { setForce100(false); setOffset(o => o + 10); }}
-              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
-              title="Pan Left (Older candles)"
-            >◀</button>
-            <button
-              onClick={() => { setOffset(0); setForce100(true); }}
-              className="px-2.5 h-7 rounded bg-indigo-900/80 border border-indigo-700/50 text-indigo-300 text-[9px] font-bold flex items-center justify-center hover:bg-indigo-800 hover:text-white transition active:scale-95"
-              title="Snap to latest candle"
-            >NOW</button>
-            <button
-              onClick={() => { setForce100(false); setOffset(o => Math.max(0, o - 10)); }}
-              className="w-7 h-7 rounded bg-[#0e1321]/90 border border-[#1b253b] text-gray-300 text-sm flex items-center justify-center hover:bg-[#1b253b] hover:text-white transition active:scale-95"
-              title="Pan Right (Newer candles)"
-            >▶</button>
-          </div>
         </div>
 
         {/* Quick sidebar containing list of drawings */}
