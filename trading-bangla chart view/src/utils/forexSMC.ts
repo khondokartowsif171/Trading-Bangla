@@ -20,6 +20,7 @@ export interface FVGZone {
   bottom: number;
   startIndex: number;
   filled: boolean;
+  fillPct: number; // 0–100: how much of the gap has been re-entered by price
 }
 
 export interface StructureBreak {
@@ -29,10 +30,29 @@ export interface StructureBreak {
   index: number;
 }
 
+export interface LiquidityLevel {
+  type: 'BSL' | 'SSL'; // Buy-Side Liquidity (equal highs) | Sell-Side Liquidity (equal lows)
+  price: number;
+  count: number;       // number of touches in cluster
+  startIndex: number;
+  swept: boolean;      // true if price has crossed through this level
+}
+
+export interface PDZone {
+  swingHigh: number;
+  swingLow: number;
+  premium: number;      // 75% of range
+  equilibrium: number;  // 50% midpoint
+  discount: number;     // 25% of range
+  bias: 'bullish' | 'bearish' | 'neutral';
+}
+
 export interface SMCData {
   orderBlocks: OrderBlockZone[];
   fvgZones: FVGZone[];
   structureBreaks: StructureBreak[];
+  liquidityLevels: LiquidityLevel[];
+  pdZone: PDZone | null;
   bias: 'bullish' | 'bearish' | 'neutral';
 }
 
@@ -62,9 +82,100 @@ function swingLows(candles: Candle[], lookback = 3): number[] {
   return indices;
 }
 
+function clamp(min: number, max: number, val: number): number {
+  return Math.min(max, Math.max(min, val));
+}
+
+function detectLiquidity(candles: Candle[], lastPrice: number, offset = 0, tolerance = 0.001): LiquidityLevel[] {
+  const levels: LiquidityLevel[] = [];
+  const highs = swingHighs(candles, 3);
+  const lows = swingLows(candles, 3);
+
+  // Cluster equal highs → Buy-Side Liquidity
+  const usedHighs = new Set<number>();
+  for (let i = 0; i < highs.length; i++) {
+    if (usedHighs.has(i)) continue;
+    const price = candles[highs[i]].h;
+    const cluster = [highs[i]];
+    for (let j = i + 1; j < highs.length; j++) {
+      if (usedHighs.has(j)) continue;
+      if (Math.abs(candles[highs[j]].h - price) / price <= tolerance) {
+        cluster.push(highs[j]);
+        usedHighs.add(j);
+      }
+    }
+    if (cluster.length >= 2) {
+      const avgPrice = cluster.reduce((s, idx) => s + candles[idx].h, 0) / cluster.length;
+      levels.push({
+        type: 'BSL',
+        price: avgPrice,
+        count: cluster.length,
+        startIndex: offset + cluster[0],
+        swept: lastPrice > avgPrice,
+      });
+    }
+    usedHighs.add(i);
+  }
+
+  // Cluster equal lows → Sell-Side Liquidity
+  const usedLows = new Set<number>();
+  for (let i = 0; i < lows.length; i++) {
+    if (usedLows.has(i)) continue;
+    const price = candles[lows[i]].l;
+    const cluster = [lows[i]];
+    for (let j = i + 1; j < lows.length; j++) {
+      if (usedLows.has(j)) continue;
+      if (Math.abs(candles[lows[j]].l - price) / price <= tolerance) {
+        cluster.push(lows[j]);
+        usedLows.add(j);
+      }
+    }
+    if (cluster.length >= 2) {
+      const avgPrice = cluster.reduce((s, idx) => s + candles[idx].l, 0) / cluster.length;
+      levels.push({
+        type: 'SSL',
+        price: avgPrice,
+        count: cluster.length,
+        startIndex: offset + cluster[0],
+        swept: lastPrice < avgPrice,
+      });
+    }
+    usedLows.add(i);
+  }
+
+  // Return up to 6 most recent levels
+  return levels.sort((a, b) => b.startIndex - a.startIndex).slice(0, 6);
+}
+
+function detectPDZone(candles: Candle[], lastPrice: number): PDZone | null {
+  const highs = swingHighs(candles, 5);
+  const lows = swingLows(candles, 5);
+  if (highs.length === 0 || lows.length === 0) return null;
+
+  const lastHighIdx = highs[highs.length - 1];
+  const lastLowIdx = lows[lows.length - 1];
+  const swingHigh = candles[lastHighIdx].h;
+  const swingLow = candles[lastLowIdx].l;
+  if (swingHigh <= swingLow) return null;
+
+  const range = swingHigh - swingLow;
+  const equilibrium = swingLow + range * 0.5;
+  const premium = swingLow + range * 0.75;
+  const discount = swingLow + range * 0.25;
+
+  return {
+    swingHigh,
+    swingLow,
+    premium,
+    equilibrium,
+    discount,
+    bias: lastPrice < equilibrium ? 'bullish' : lastPrice > equilibrium ? 'bearish' : 'neutral',
+  };
+}
+
 export function detectSMC(candles: Candle[], offset = 0): SMCData {
   if (candles.length < 15) {
-    return { orderBlocks: [], fvgZones: [], structureBreaks: [], bias: 'neutral' };
+    return { orderBlocks: [], fvgZones: [], structureBreaks: [], liquidityLevels: [], pdZone: null, bias: 'neutral' };
   }
 
   const lastPrice = candles[candles.length - 1].c;
@@ -112,27 +223,41 @@ export function detectSMC(candles: Candle[], offset = 0): SMCData {
     }
   }
 
-  // FVG Zones
+  // FVG Zones — with fillPct tracking
   const fvgZones: FVGZone[] = [];
   for (let i = 1; i < candles.length - 1; i++) {
     const a = candles[i - 1];
     const c = candles[i + 1];
     if (c.l > a.h) {
+      const top = c.l;
+      const bottom = a.h;
+      const gapSize = top - bottom;
+      const fillPct = gapSize > 0
+        ? clamp(0, 100, (lastPrice - bottom) / gapSize * 100)
+        : 0;
       fvgZones.push({
         type: 'bullish',
-        top: c.l,
-        bottom: a.h,
+        top,
+        bottom,
         startIndex: offset + i - 1,
         filled: lastPrice <= a.h,
+        fillPct,
       });
     }
     if (c.h < a.l) {
+      const top = a.l;
+      const bottom = c.h;
+      const gapSize = top - bottom;
+      const fillPct = gapSize > 0
+        ? clamp(0, 100, (top - lastPrice) / gapSize * 100)
+        : 0;
       fvgZones.push({
         type: 'bearish',
-        top: a.l,
-        bottom: c.h,
+        top,
+        bottom,
         startIndex: offset + i - 1,
         filled: lastPrice >= a.l,
+        fillPct,
       });
     }
   }
@@ -182,6 +307,8 @@ export function detectSMC(candles: Candle[], offset = 0): SMCData {
     orderBlocks: orderBlocks.slice(-6),
     fvgZones: fvgZones.slice(-5),
     structureBreaks: structureBreaks.slice(-4),
+    liquidityLevels: detectLiquidity(candles, lastPrice, offset),
+    pdZone: detectPDZone(candles, lastPrice),
     bias,
   };
 }

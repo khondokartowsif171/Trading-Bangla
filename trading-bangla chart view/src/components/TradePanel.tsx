@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { detectSMC } from '../utils/forexSMC';
 import {
   PairConfig,
   Position,
@@ -23,6 +24,51 @@ import {
   Download,
   Calculator,
 } from 'lucide-react';
+
+// Backtest types
+type BacktestStrategy = 'fvg_bounce' | 'ob_rejection' | 'bos_pullback';
+interface BacktestTrade {
+  entryIndex: number; exitIndex: number;
+  type: 'BUY' | 'SELL';
+  entryPrice: number; exitPrice: number; pnl: number;
+}
+interface BacktestResult {
+  trades: BacktestTrade[];
+  totalTrades: number; winRate: number;
+  profitFactor: number; maxDrawdown: number; netPnL: number;
+  equityCurve: number[];
+}
+
+// Stat box sub-component
+const StatBox = ({ label, value, positive }: { label: string; value: string; positive?: boolean }) => (
+  <div className="bg-gray-950/60 rounded p-1.5 text-center border border-gray-800/40">
+    <div className="text-[7.5px] text-gray-500 uppercase font-bold">{label}</div>
+    <div className={`text-xs font-mono font-bold ${positive === undefined ? 'text-gray-200' : positive ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>{value}</div>
+  </div>
+);
+
+// Mini SVG equity curve sub-component
+const EquityCurveChart = ({ curve }: { curve: number[] }) => {
+  if (curve.length < 2) return null;
+  const W = 260, H = 50;
+  const min = Math.min(...curve);
+  const max = Math.max(...curve);
+  const rng = max - min || 1;
+  const pts = curve.map((v, i) => {
+    const x = (i / (curve.length - 1)) * W;
+    const y = H - ((v - min) / rng) * (H - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const isPos = curve[curve.length - 1] >= curve[0];
+  return (
+    <div className="bg-gray-950/40 rounded border border-gray-800/30 p-2">
+      <div className="text-[8px] text-gray-500 uppercase font-bold mb-1">ইকুইটি কার্ভ</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-12">
+        <polyline points={pts} fill="none" stroke={isPos ? '#00e676' : '#ff3d57'} strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+};
 
 interface TradePanelProps {
   pair: PairConfig;
@@ -62,7 +108,12 @@ export default function TradePanel({
   const [useTP, setUseTP] = useState(false);
   const [tpValue, setTpValue] = useState<string>('');
 
-  const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'backtest'>('positions');
+
+  // Backtest state
+  const [backtestStrategy, setBacktestStrategy] = useState<BacktestStrategy>('fvg_bounce');
+  const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
   // Multiplier helper for PnL calculation
   const getMultiplier = (symbolName: string) => {
@@ -125,6 +176,131 @@ export default function TradePanel({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // Backtest engine
+  const runBacktest = useCallback(() => {
+    const candles = pair.sparkline;
+    if (!candles || candles.length < 30) return;
+    setIsRunning(true);
+    setBacktestResult(null);
+
+    const trades: BacktestTrade[] = [];
+    const windowSize = 30;
+
+    for (let i = windowSize; i < candles.length - 5; i++) {
+      const window = candles.slice(i - windowSize, i);
+      const smc = detectSMC(window, i - windowSize);
+
+      if (backtestStrategy === 'fvg_bounce') {
+        for (const fvg of smc.fvgZones) {
+          if (fvg.filled) continue;
+          const next = candles[i];
+          if (fvg.type === 'bullish' && next.l <= fvg.top && next.c > fvg.bottom) {
+            const entry = next.c;
+            const risk = entry - fvg.bottom;
+            if (risk <= 0) continue;
+            const tp = entry + risk * 2;
+            const sl = fvg.bottom - risk * 0.5;
+            for (let j = i + 1; j < Math.min(i + 12, candles.length); j++) {
+              if (candles[j].h >= tp) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: tp, pnl: risk * 2 }); break; }
+              if (candles[j].l <= sl) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: sl, pnl: -(risk * 0.5) }); break; }
+            }
+            break;
+          }
+          if (fvg.type === 'bearish' && next.h >= fvg.bottom && next.c < fvg.top) {
+            const entry = next.c;
+            const risk = fvg.top - entry;
+            if (risk <= 0) continue;
+            const tp = entry - risk * 2;
+            const sl = fvg.top + risk * 0.5;
+            for (let j = i + 1; j < Math.min(i + 12, candles.length); j++) {
+              if (candles[j].l <= tp) { trades.push({ entryIndex: i, exitIndex: j, type: 'SELL', entryPrice: entry, exitPrice: tp, pnl: risk * 2 }); break; }
+              if (candles[j].h >= sl) { trades.push({ entryIndex: i, exitIndex: j, type: 'SELL', entryPrice: entry, exitPrice: sl, pnl: -(risk * 0.5) }); break; }
+            }
+            break;
+          }
+        }
+      } else if (backtestStrategy === 'ob_rejection') {
+        for (const ob of smc.orderBlocks) {
+          if (ob.mitigated) continue;
+          const next = candles[i];
+          if (ob.type === 'bullish' && next.l <= ob.high && next.c > ob.low) {
+            const entry = next.c;
+            const risk = entry - ob.low;
+            if (risk <= 0) continue;
+            const tp = entry + risk * 2;
+            const sl = ob.low * 0.9995;
+            for (let j = i + 1; j < Math.min(i + 12, candles.length); j++) {
+              if (candles[j].h >= tp) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: tp, pnl: risk * 2 }); break; }
+              if (candles[j].l <= sl) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: sl, pnl: -(risk) }); break; }
+            }
+            break;
+          }
+          if (ob.type === 'bearish' && next.h >= ob.low && next.c < ob.high) {
+            const entry = next.c;
+            const risk = ob.high - entry;
+            if (risk <= 0) continue;
+            const tp = entry - risk * 2;
+            const sl = ob.high * 1.0005;
+            for (let j = i + 1; j < Math.min(i + 12, candles.length); j++) {
+              if (candles[j].l <= tp) { trades.push({ entryIndex: i, exitIndex: j, type: 'SELL', entryPrice: entry, exitPrice: tp, pnl: risk * 2 }); break; }
+              if (candles[j].h >= sl) { trades.push({ entryIndex: i, exitIndex: j, type: 'SELL', entryPrice: entry, exitPrice: sl, pnl: -(risk) }); break; }
+            }
+            break;
+          }
+        }
+      } else if (backtestStrategy === 'bos_pullback') {
+        const breaks = smc.structureBreaks;
+        if (breaks.length > 0) {
+          const lastBreak = breaks[breaks.length - 1];
+          if (lastBreak.direction === 'bullish') {
+            const next = candles[i];
+            if (next.c < next.o) { // pullback candle
+              const entry = next.c;
+              const risk = entry - (entry * 0.999);
+              const tp = entry + risk * 3;
+              const sl = entry - risk;
+              for (let j = i + 1; j < Math.min(i + 8, candles.length); j++) {
+                if (candles[j].h >= tp) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: tp, pnl: risk * 3 }); break; }
+                if (candles[j].l <= sl) { trades.push({ entryIndex: i, exitIndex: j, type: 'BUY', entryPrice: entry, exitPrice: sl, pnl: -(risk) }); break; }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const grossProfit = trades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const grossLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
+    const netPnLraw = trades.reduce((s, t) => s + t.pnl, 0);
+    const pipVal = pair.pip > 0 ? pair.pip : 0.0001;
+
+    let equity = 1000;
+    const equityCurve = [equity];
+    for (const t of trades) {
+      equity += (t.pnl / pipVal) * 0.01;
+      equityCurve.push(equity);
+    }
+
+    let peak = -Infinity, maxDD = 0;
+    for (const e of equityCurve) {
+      if (e > peak) peak = e;
+      const dd = peak - e;
+      if (dd > maxDD) maxDD = dd;
+    }
+
+    setBacktestResult({
+      trades,
+      totalTrades: trades.length,
+      winRate: trades.length > 0 ? Math.round((wins / trades.length) * 100) : 0,
+      profitFactor: grossLoss > 0 ? +(grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? 99 : 0,
+      maxDrawdown: +maxDD.toFixed(2),
+      netPnL: +(netPnLraw / pipVal * 0.01).toFixed(2),
+      equityCurve,
+    });
+    setIsRunning(false);
+  }, [pair.sparkline, pair.pip, backtestStrategy]);
 
   // Quick preset SL and TP rates
   const setPresets = (type: 'conservative' | 'aggressive') => {
@@ -479,6 +655,16 @@ export default function TradePanel({
           >
             <History className="w-3.5 h-3.5" /> ক্লোজড হিস্ট্রি ({history.length})
           </button>
+          <button
+            onClick={() => setActiveTab('backtest')}
+            className={`flex-1 py-2 border-b-2 flex items-center justify-center gap-1 transition ${
+              activeTab === 'backtest'
+                ? 'border-[#a855f7] text-white bg-[#101625]'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            📊 ব্যাকটেস্ট
+          </button>
         </div>
 
         {/* Tab view outcomes */}
@@ -555,7 +741,7 @@ export default function TradePanel({
                 })}
               </div>
             )
-          ) : (
+          ) : activeTab === 'history' ? (
             history.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-4">
                 <History className="w-6 h-6 text-gray-600 mb-1.5" />
@@ -631,7 +817,73 @@ export default function TradePanel({
                 })}
               </div>
             )
-          )}
+          ) : activeTab === 'backtest' ? (
+            <div className="space-y-3 pb-2">
+              {/* Strategy picker */}
+              <div>
+                <label className="text-[9px] text-gray-500 uppercase font-bold tracking-wider block mb-1.5">স্ট্র্যাটেজি বেছে নিন</label>
+                <div className="space-y-1">
+                  {(['fvg_bounce', 'ob_rejection', 'bos_pullback'] as BacktestStrategy[]).map(s => (
+                    <label key={s} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-gray-800/40">
+                      <input type="radio" name="btStrategy" checked={backtestStrategy === s}
+                        onChange={() => { setBacktestStrategy(s); setBacktestResult(null); }}
+                        className="accent-purple-500" />
+                      <span className="text-[10px] text-gray-300 font-medium">
+                        {s === 'fvg_bounce' ? '↩ FVG Bounce' : s === 'ob_rejection' ? '🔷 OB Rejection' : '📈 BOS Pullback'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Run button */}
+              <button
+                onClick={runBacktest}
+                disabled={isRunning}
+                className="w-full py-2 rounded bg-purple-900/60 border border-purple-700/40 text-[#d085ff] text-[10px] font-bold uppercase tracking-wider hover:bg-purple-900 transition disabled:opacity-50"
+              >
+                {isRunning ? '⏳ চলছে...' : '▶ ব্যাকটেস্ট রান করুন'}
+              </button>
+
+              {/* Results */}
+              {backtestResult && backtestResult.totalTrades > 0 ? (
+                <>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <StatBox label="মোট ট্রেড" value={String(backtestResult.totalTrades)} />
+                    <StatBox label="জয় হার" value={`${backtestResult.winRate}%`} positive={backtestResult.winRate >= 50} />
+                    <StatBox label="Profit Factor" value={String(backtestResult.profitFactor)} positive={backtestResult.profitFactor >= 1} />
+                    <StatBox label="Max Drawdown" value={`$${backtestResult.maxDrawdown.toFixed(1)}`} positive={false} />
+                    <div className="col-span-2 bg-gray-950/60 rounded p-1.5 text-center border border-gray-800/40">
+                      <div className="text-[8px] text-gray-500 uppercase font-bold">নেট P&L ($)</div>
+                      <div className={`text-sm font-mono font-bold ${backtestResult.netPnL >= 0 ? 'text-[#00e676]' : 'text-[#ff3d57]'}`}>
+                        {backtestResult.netPnL >= 0 ? '+' : ''}{backtestResult.netPnL.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <EquityCurveChart curve={backtestResult.equityCurve} />
+
+                  <div>
+                    <div className="text-[9px] text-gray-500 uppercase font-bold mb-1">ট্রেড লগ (শেষ ২০)</div>
+                    <div className="space-y-0.5 max-h-36 overflow-y-auto">
+                      {backtestResult.trades.slice(-20).map((t, i) => (
+                        <div key={i} className="grid grid-cols-4 text-[9px] font-mono p-1 bg-gray-950/40 rounded border border-gray-800/30">
+                          <span className={t.type === 'BUY' ? 'text-[#00e676]' : 'text-[#ff3d57]'}>{t.type}</span>
+                          <span className="text-gray-400">{t.entryPrice.toFixed(pair.dec)}</span>
+                          <span className="text-gray-400">{t.exitPrice.toFixed(pair.dec)}</span>
+                          <span className={t.pnl >= 0 ? 'text-[#00e676]' : 'text-[#ff3d57]'}>{t.pnl >= 0 ? '+' : ''}{(t.pnl / (pair.pip > 0 ? pair.pip : 0.0001) * 0.01).toFixed(1)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : backtestResult && backtestResult.totalTrades === 0 ? (
+                <div className="text-center text-[10px] text-gray-500 py-4">
+                  এই কৌশলে কোনো সিগন্যাল পাওয়া যায়নি। ভিন্ন কৌশল বেছে নিন।
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

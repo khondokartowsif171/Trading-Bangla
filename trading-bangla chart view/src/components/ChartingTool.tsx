@@ -154,8 +154,13 @@ const INDICATOR_REGISTRY: IndicatorDef[] = [
   { id:'atrpct', label:'ATR % 14', category:'volatility', renderType:'subpanel', defaultParams:{period:14}, color:'#e879f9' },
   { id:'ulcerindex', label:'Ulcer Index 14', category:'volatility', renderType:'subpanel', defaultParams:{period:14}, color:'#fb7185' },
   // SMC / Patterns
-  { id:'smc', label:'Smart Money (SMC)', category:'smc', renderType:'overlay', defaultParams:{}, color:'#00e676' },
-  { id:'patterns', label:'Candle Patterns', category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
+  { id:'smc',       label:'SMC Suite (All)',          category:'smc', renderType:'overlay', defaultParams:{}, color:'#00e676' },
+  { id:'fvg',       label:'Fair Value Gap (FVG)',      category:'smc', renderType:'overlay', defaultParams:{}, color:'#00e676' },
+  { id:'ob',        label:'Order Blocks (OB)',          category:'smc', renderType:'overlay', defaultParams:{}, color:'#f97316' },
+  { id:'bos',       label:'BOS / CHoCH Structure',     category:'smc', renderType:'overlay', defaultParams:{}, color:'#00d4ff' },
+  { id:'liquidity', label:'Liquidity Pools (EQH/EQL)', category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
+  { id:'pdzone',    label:'Premium / Discount Zone',   category:'smc', renderType:'overlay', defaultParams:{}, color:'#a855f7' },
+  { id:'patterns',  label:'Candle Patterns',            category:'smc', renderType:'overlay', defaultParams:{}, color:'#fbbf24' },
 ];
 
 const IND_CATEGORIES = [
@@ -206,10 +211,38 @@ export default function ChartingTool({
     () => new Set(['trend','oscillator','volume','volatility','smc'])
   );
 
+  // Favorites — persisted to localStorage
+  const [favoriteIndicators, setFavoriteIndicators] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('tb_fav_indicators');
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set(); }
+  });
+  const toggleFavorite = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteIndicators(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      try { localStorage.setItem('tb_fav_indicators', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+
   const toggleIndicator = useCallback((id: string) => {
     setActiveIndicators(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (id === 'smc') {
+        const smcChildren = ['fvg', 'ob', 'bos', 'liquidity', 'pdzone'];
+        if (next.has('smc')) {
+          next.delete('smc');
+          smcChildren.forEach(c => next.delete(c));
+        } else {
+          next.add('smc');
+          smcChildren.forEach(c => next.add(c));
+        }
+      } else {
+        next.has(id) ? next.delete(id) : next.add(id);
+      }
       return next;
     });
   }, []);
@@ -282,6 +315,13 @@ export default function ChartingTool({
   const showHV = activeIndicators.has('hv');
   const showATRPct = activeIndicators.has('atrpct');
   const showUlcerIndex = activeIndicators.has('ulcerindex');
+
+  // Individual SMC sub-indicator booleans (backward compat: showSMC prop still enables all)
+  const showFVG       = activeIndicators.has('fvg')       || showSMC || activeIndicators.has('smc');
+  const showOB        = activeIndicators.has('ob')         || showSMC || activeIndicators.has('smc');
+  const showBOS       = activeIndicators.has('bos')        || showSMC || activeIndicators.has('smc');
+  const showLiquidity = activeIndicators.has('liquidity')  || activeIndicators.has('smc');
+  const showPDZone    = activeIndicators.has('pdzone')     || activeIndicators.has('smc');
 
   // Stable key for useEffect dependencies
   const activeIndicatorsKey = useMemo(() => [...activeIndicators].sort().join(','), [activeIndicators]);
@@ -523,9 +563,10 @@ export default function ChartingTool({
 
   // Real SMC analysis on visible candles
   const smcData = useMemo(() => {
-    if (!showSMC || visibleCandles.length < 15) return null;
+    const needsSMC = showSMC || showFVG || showOB || showBOS || showLiquidity || showPDZone;
+    if (!needsSMC || visibleCandles.length < 15) return null;
     return detectSMC(visibleCandles, visibleStartIndex);
-  }, [visibleCandles, visibleStartIndex, showSMC]);
+  }, [visibleCandles, visibleStartIndex, showSMC, showFVG, showOB, showBOS, showLiquidity, showPDZone]);
 
   // Candlestick pattern markers on visible window
   const patternMarkers = useMemo(() => {
@@ -659,69 +700,173 @@ export default function ChartingTool({
     ctx.stroke();
 
     // 3. RENDER SMART MONEY CONCEPT (SMC) VISUAL OVERLAYS
-    if (showSMC && smcData) {
+    if (smcData) {
       ctx.font = '700 8px "DM Mono", monospace';
 
-      // FVG Zones — shaded imbalance rectangles
-      smcData.fvgZones.forEach(fvg => {
-        const startX = chartW - (visibleCandles.length - (fvg.startIndex - visibleStartIndex)) * step;
-        const endX = Math.min(chartW, startX + step * 8);
-        const topY = toY(fvg.top);
-        const botY = toY(fvg.bottom);
-        if (fvg.filled) return;
-        if (fvg.type === 'bullish') {
-          ctx.fillStyle = 'rgba(0, 230, 118, 0.07)';
-          ctx.strokeStyle = 'rgba(0, 230, 118, 0.3)';
-        } else {
-          ctx.fillStyle = 'rgba(255, 61, 87, 0.07)';
-          ctx.strokeStyle = 'rgba(255, 61, 87, 0.3)';
-        }
-        ctx.lineWidth = 0.8;
-        ctx.fillRect(startX, topY, endX - startX, botY - topY);
-        ctx.strokeRect(startX, topY, endX - startX, botY - topY);
-        ctx.fillStyle = fvg.type === 'bullish' ? '#00e676' : '#ff3d57';
-        ctx.fillText('FVG', startX + 3, topY + 10);
-      });
+      // FVG Zones — enhanced: gradient fill, fill-% bar, extends to right edge
+      if (showFVG) {
+        smcData.fvgZones.forEach(fvg => {
+          if (fvg.filled) return;
+          const startX = chartW - (visibleCandles.length - (fvg.startIndex - visibleStartIndex)) * step;
+          const endX = chartW; // extend to right edge
+          const topY = toY(fvg.top);
+          const botY = toY(fvg.bottom);
+          const zoneH = botY - topY;
+          if (zoneH <= 0 || startX > chartW) return;
+
+          // Gradient fill
+          const grad = ctx.createLinearGradient(startX, 0, endX, 0);
+          if (fvg.type === 'bullish') {
+            grad.addColorStop(0, 'rgba(0,230,118,0.18)');
+            grad.addColorStop(1, 'rgba(0,230,118,0.04)');
+            ctx.strokeStyle = 'rgba(0,230,118,0.45)';
+          } else {
+            grad.addColorStop(0, 'rgba(255,61,87,0.18)');
+            grad.addColorStop(1, 'rgba(255,61,87,0.04)');
+            ctx.strokeStyle = 'rgba(255,61,87,0.45)';
+          }
+          ctx.fillStyle = grad;
+          ctx.lineWidth = 0.8;
+          ctx.fillRect(startX, topY, endX - startX, zoneH);
+          ctx.strokeRect(startX, topY, endX - startX, zoneH);
+
+          // Fill-% overlay bar
+          if (fvg.fillPct > 0) {
+            const fillH = zoneH * (fvg.fillPct / 100);
+            ctx.fillStyle = fvg.type === 'bullish' ? 'rgba(0,230,118,0.12)' : 'rgba(255,61,87,0.12)';
+            const fillY = fvg.type === 'bullish' ? botY - fillH : topY;
+            ctx.fillRect(startX, fillY, endX - startX, fillH);
+          }
+
+          // Label: "FVG 45% ↑"
+          ctx.fillStyle = fvg.type === 'bullish' ? '#00e676' : '#ff3d57';
+          const arrow = fvg.type === 'bullish' ? '↑' : '↓';
+          ctx.fillText(`FVG ${Math.round(fvg.fillPct)}% ${arrow}`, startX + 3, topY + 10);
+        });
+      }
 
       // Order Blocks
-      smcData.orderBlocks.forEach(ob => {
-        const si = ob.startIndex - visibleStartIndex;
-        const ei = ob.endIndex - visibleStartIndex;
-        const startX = chartW - (visibleCandles.length - si) * step;
-        const endX = Math.min(chartW - 4, chartW - (visibleCandles.length - Math.min(ei, visibleCandles.length)) * step);
-        const topY = toY(ob.high);
-        const botY = toY(ob.low);
-        if (endX <= startX) return;
-        if (ob.type === 'bullish') {
-          ctx.fillStyle = ob.mitigated ? 'rgba(0,230,118,0.03)' : 'rgba(0,230,118,0.06)';
-          ctx.strokeStyle = ob.mitigated ? 'rgba(0,230,118,0.15)' : 'rgba(0,230,118,0.4)';
-        } else {
-          ctx.fillStyle = ob.mitigated ? 'rgba(255,61,87,0.03)' : 'rgba(255,61,87,0.06)';
-          ctx.strokeStyle = ob.mitigated ? 'rgba(255,61,87,0.15)' : 'rgba(255,61,87,0.4)';
-        }
-        ctx.lineWidth = ob.mitigated ? 0.5 : 1;
-        ctx.fillRect(startX, topY, endX - startX, botY - topY);
-        ctx.strokeRect(startX, topY, endX - startX, botY - topY);
-        ctx.fillStyle = ob.type === 'bullish' ? '#00e676' : '#ff3d57';
-        ctx.fillText(ob.type === 'bullish' ? '↑OB' : '↓OB', startX + 3, topY + 10);
-      });
+      if (showOB) {
+        smcData.orderBlocks.forEach(ob => {
+          const si = ob.startIndex - visibleStartIndex;
+          const ei = ob.endIndex - visibleStartIndex;
+          const startX = chartW - (visibleCandles.length - si) * step;
+          const endX = Math.min(chartW - 4, chartW - (visibleCandles.length - Math.min(ei, visibleCandles.length)) * step);
+          const topY = toY(ob.high);
+          const botY = toY(ob.low);
+          if (endX <= startX) return;
+          if (ob.type === 'bullish') {
+            ctx.fillStyle = ob.mitigated ? 'rgba(0,230,118,0.03)' : 'rgba(0,230,118,0.06)';
+            ctx.strokeStyle = ob.mitigated ? 'rgba(0,230,118,0.15)' : 'rgba(0,230,118,0.4)';
+          } else {
+            ctx.fillStyle = ob.mitigated ? 'rgba(255,61,87,0.03)' : 'rgba(255,61,87,0.06)';
+            ctx.strokeStyle = ob.mitigated ? 'rgba(255,61,87,0.15)' : 'rgba(255,61,87,0.4)';
+          }
+          ctx.lineWidth = ob.mitigated ? 0.5 : 1;
+          ctx.fillRect(startX, topY, endX - startX, botY - topY);
+          ctx.strokeRect(startX, topY, endX - startX, botY - topY);
+          ctx.fillStyle = ob.type === 'bullish' ? '#00e676' : '#ff3d57';
+          ctx.fillText(ob.type === 'bullish' ? '↑OB' : '↓OB', startX + 3, topY + 10);
+        });
+      }
 
       // BOS / CHoCH structure lines
-      smcData.structureBreaks.forEach(sb => {
-        const sbY = toY(sb.price);
-        if (sbY < 0 || sbY > charLayout.chartH) return;
-        const isCHoCH = sb.type === 'CHoCH';
-        ctx.strokeStyle = isCHoCH ? 'rgba(255,193,7,0.7)' : 'rgba(0,212,255,0.7)';
-        ctx.setLineDash(isCHoCH ? [3, 3] : [5, 3]);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(8, sbY);
-        ctx.lineTo(chartW - 8, sbY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = isCHoCH ? '#ffc107' : '#00d4ff';
-        ctx.fillText(`${sb.type} ${sb.direction === 'bullish' ? '↑' : '↓'}`, 10, sbY - 3);
-      });
+      if (showBOS) {
+        smcData.structureBreaks.forEach(sb => {
+          const sbY = toY(sb.price);
+          if (sbY < 0 || sbY > charLayout.chartH) return;
+          const isCHoCH = sb.type === 'CHoCH';
+          ctx.strokeStyle = isCHoCH ? 'rgba(255,193,7,0.7)' : 'rgba(0,212,255,0.7)';
+          ctx.setLineDash(isCHoCH ? [3, 3] : [5, 3]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(8, sbY);
+          ctx.lineTo(chartW - 8, sbY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = isCHoCH ? '#ffc107' : '#00d4ff';
+          ctx.fillText(`${sb.type} ${sb.direction === 'bullish' ? '↑' : '↓'}`, 10, sbY - 3);
+        });
+      }
+
+      // Liquidity Pools — dotted horizontal lines at equal highs/lows
+      if (showLiquidity && smcData.liquidityLevels) {
+        smcData.liquidityLevels.forEach(liq => {
+          const liqY = toY(liq.price);
+          if (liqY < 0 || liqY > charLayout.chartH) return;
+          const isBSL = liq.type === 'BSL';
+          const alpha = liq.swept ? 0.3 : 0.75;
+          ctx.strokeStyle = isBSL ? `rgba(251,191,36,${alpha})` : `rgba(168,85,247,${alpha})`;
+          ctx.setLineDash([2, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(8, liqY);
+          ctx.lineTo(chartW - 8, liqY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = isBSL ? '#fbbf24' : '#a855f7';
+          ctx.fillText(`${liq.type}(${liq.count})${liq.swept ? ' ✓' : ''}`, 10, liqY - 3);
+        });
+      }
+
+      // Premium / Discount Zone
+      if (showPDZone && smcData.pdZone) {
+        const pd = smcData.pdZone;
+        const swingHighY   = toY(pd.swingHigh);
+        const premiumY     = toY(pd.premium);
+        const eqY          = toY(pd.equilibrium);
+        const discountY    = toY(pd.discount);
+        const swingLowY    = toY(pd.swingLow);
+
+        // Red tint: premium zone (equilibrium → swing high)
+        const premTop  = Math.max(0, swingHighY);
+        const premBot  = Math.min(charLayout.chartH, premiumY);
+        if (premBot > premTop) {
+          ctx.fillStyle = 'rgba(255,61,87,0.04)';
+          ctx.fillRect(0, premTop, chartW, premBot - premTop);
+        }
+
+        // Green tint: discount zone (swing low → equilibrium)
+        const discTop = Math.max(0, discountY);
+        const discBot = Math.min(charLayout.chartH, swingLowY);
+        if (discBot > discTop) {
+          ctx.fillStyle = 'rgba(0,230,118,0.04)';
+          ctx.fillRect(0, discTop, chartW, discBot - discTop);
+        }
+
+        // EQ 50% line — purple dashed
+        if (eqY >= 0 && eqY <= charLayout.chartH) {
+          ctx.strokeStyle = 'rgba(168,85,247,0.6)';
+          ctx.setLineDash([6, 3]);
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(0, eqY); ctx.lineTo(chartW, eqY); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#a855f7';
+          ctx.fillText('EQ 50%', chartW - 48, eqY - 3);
+        }
+
+        // PREM 75% line — red dashed
+        if (premiumY >= 0 && premiumY <= charLayout.chartH) {
+          ctx.strokeStyle = 'rgba(255,61,87,0.5)';
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(0, premiumY); ctx.lineTo(chartW, premiumY); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#ff3d57';
+          ctx.fillText('PREM 75%', chartW - 58, premiumY - 3);
+        }
+
+        // DISC 25% line — green dashed
+        if (discountY >= 0 && discountY <= charLayout.chartH) {
+          ctx.strokeStyle = 'rgba(0,230,118,0.5)';
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(0, discountY); ctx.lineTo(chartW, discountY); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#00e676';
+          ctx.fillText('DISC 25%', chartW - 58, discountY - 3);
+        }
+      }
     }
 
     // 4. BOLLINGER BANDS DRAW
@@ -2806,6 +2951,32 @@ export default function ChartingTool({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
+              {/* ⭐ Favorites section */}
+              {favoriteIndicators.size > 0 && (
+                <div>
+                  <div className="w-full flex items-center justify-between px-3 py-2 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                    <span>⭐ Favorites ({favoriteIndicators.size})</span>
+                  </div>
+                  <div className="pb-1">
+                    {INDICATOR_REGISTRY
+                      .filter(ind => favoriteIndicators.has(ind.id) &&
+                        (indicatorSearch === '' || ind.label.toLowerCase().includes(indicatorSearch.toLowerCase()) || ind.id.includes(indicatorSearch.toLowerCase())))
+                      .map(ind => (
+                        <div key={`fav-${ind.id}`}
+                          className={`flex items-center px-3 py-1.5 cursor-pointer transition group ${activeIndicators.has(ind.id) ? 'bg-[#1b253b]/40' : 'hover:bg-[#1b253b]/20'}`}
+                          onClick={() => toggleIndicator(ind.id)}>
+                          <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center mr-2 flex-shrink-0 transition ${
+                            activeIndicators.has(ind.id) ? 'border-blue-500 bg-blue-500' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                            {activeIndicators.has(ind.id) && <span className="text-white text-[8px] font-black">✓</span>}
+                          </div>
+                          <span className={`text-[11px] flex-1 truncate ${activeIndicators.has(ind.id) ? 'text-white font-medium' : 'text-gray-400'}`}>{ind.label}</span>
+                          <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1" style={{ backgroundColor: ind.color }} />
+                          <button onClick={(e) => toggleFavorite(ind.id, e)} className="ml-1.5 text-[10px] text-amber-400 shrink-0">★</button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
               {IND_CATEGORIES.map(cat => {
                 const catInds = INDICATOR_REGISTRY.filter(r =>
                   r.category === cat.id &&
@@ -2833,6 +3004,12 @@ export default function ChartingTool({
                             </div>
                             <span className={`text-[11px] flex-1 truncate ${activeIndicators.has(ind.id) ? 'text-white font-medium' : 'text-gray-400'}`}>{ind.label}</span>
                             <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1" style={{ backgroundColor: ind.color }} />
+                            <button
+                              onClick={(e) => toggleFavorite(ind.id, e)}
+                              className={`ml-1.5 text-[10px] shrink-0 transition ${favoriteIndicators.has(ind.id) ? 'text-amber-400' : 'text-gray-600 hover:text-amber-400'}`}
+                              title="Favorite">
+                              {favoriteIndicators.has(ind.id) ? '★' : '☆'}
+                            </button>
                           </div>
                         ))}
                       </div>
