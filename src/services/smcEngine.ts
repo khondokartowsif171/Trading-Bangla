@@ -41,6 +41,32 @@ export interface LiquidityZone {
   strength: 'equal-highs' | 'equal-lows' | 'swing-high' | 'swing-low';
 }
 
+export interface MitigationBlock extends OrderBlock {}
+
+export interface BreakerBlock extends OrderBlock {
+  flipDirection: 'now-resistance' | 'now-support';
+}
+
+export interface InducementLevel extends LiquidityZone {}
+
+export interface DisplacementCandle {
+  type: 'bullish' | 'bearish';
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  bodyRatio: number;
+}
+
+export interface PropulsionBlock {
+  type: 'bullish' | 'bearish';
+  high: number;
+  low: number;
+  time: number;
+  fvgTime: number;
+}
+
 export interface SMCAnalysis {
   orderBlocks: OrderBlock[];
   fairValueGaps: FairValueGap[];
@@ -50,6 +76,11 @@ export interface SMCAnalysis {
   biasScore: number; // -100 to +100
   premiumDiscount: { premium: number; discount: number; equilibrium: number } | null;
   lastMSS: StructurePoint | null;
+  mitigationBlocks: MitigationBlock[];
+  breakerBlocks: BreakerBlock[];
+  inducementLevels: InducementLevel[];
+  displacementCandles: DisplacementCandle[];
+  propulsionBlocks: PropulsionBlock[];
 }
 
 function swingHighs(candles: OHLCV[], lookback = 3): number[] {
@@ -263,9 +294,86 @@ function calcPremiumDiscount(candles: OHLCV[]): { premium: number; discount: num
   return { premium, discount, equilibrium };
 }
 
+function detectMitigationBlocks(orderBlocks: OrderBlock[]): MitigationBlock[] {
+  return orderBlocks.filter(ob => ob.mitigated);
+}
+
+function detectBreakerBlocks(orderBlocks: OrderBlock[], lastPrice: number): BreakerBlock[] {
+  const breakers: BreakerBlock[] = [];
+  for (const ob of orderBlocks) {
+    if (ob.type === 'bullish' && lastPrice < ob.low) {
+      breakers.push({ ...ob, flipDirection: 'now-resistance' });
+    } else if (ob.type === 'bearish' && lastPrice > ob.high) {
+      breakers.push({ ...ob, flipDirection: 'now-support' });
+    }
+  }
+  return breakers.slice(-4);
+}
+
+function detectInducement(liquidityZones: LiquidityZone[]): InducementLevel[] {
+  return liquidityZones.filter(z => z.swept);
+}
+
+function detectDisplacement(candles: OHLCV[]): DisplacementCandle[] {
+  if (candles.length < 14) return [];
+  const slice = candles.slice(-50);
+  const lookback = slice.slice(-14);
+  const avgBody = lookback.reduce((sum, c) => sum + Math.abs(c.close - c.open), 0) / lookback.length;
+  const threshold = avgBody * 1.5;
+  const result: DisplacementCandle[] = [];
+  for (const c of slice) {
+    const body = Math.abs(c.close - c.open);
+    if (body > threshold) {
+      result.push({
+        type: c.close > c.open ? 'bullish' : 'bearish',
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        bodyRatio: avgBody > 0 ? body / avgBody : 1,
+      });
+    }
+  }
+  return result.slice(-5);
+}
+
+function detectPropulsionBlocks(candles: OHLCV[], fvgs: FairValueGap[]): PropulsionBlock[] {
+  const blocks: PropulsionBlock[] = [];
+  for (const fvg of fvgs.slice(-4)) {
+    const fvgIdx = candles.findIndex(c => c.time === fvg.time);
+    if (fvgIdx < 2) continue;
+    if (fvg.type === 'bullish') {
+      // Find last bearish candle before fvgIdx
+      for (let i = fvgIdx - 1; i >= Math.max(0, fvgIdx - 3); i--) {
+        const c = candles[i];
+        if (c.close < c.open) {
+          blocks.push({ type: 'bearish', high: c.high, low: c.low, time: c.time, fvgTime: fvg.time });
+          break;
+        }
+      }
+    } else {
+      // Find last bullish candle before fvgIdx
+      for (let i = fvgIdx - 1; i >= Math.max(0, fvgIdx - 3); i--) {
+        const c = candles[i];
+        if (c.close > c.open) {
+          blocks.push({ type: 'bullish', high: c.high, low: c.low, time: c.time, fvgTime: fvg.time });
+          break;
+        }
+      }
+    }
+  }
+  return blocks.slice(-4);
+}
+
 export function analyzeSMC(candles: OHLCV[]): SMCAnalysis {
   if (candles.length < 10) {
-    return { orderBlocks: [], fairValueGaps: [], structurePoints: [], liquidityZones: [], bias: 'neutral', biasScore: 0, premiumDiscount: null, lastMSS: null };
+    return {
+      orderBlocks: [], fairValueGaps: [], structurePoints: [], liquidityZones: [],
+      bias: 'neutral', biasScore: 0, premiumDiscount: null, lastMSS: null,
+      mitigationBlocks: [], breakerBlocks: [], inducementLevels: [],
+      displacementCandles: [], propulsionBlocks: [],
+    };
   }
 
   const orderBlocks = detectOrderBlocks(candles);
@@ -304,5 +412,15 @@ export function analyzeSMC(candles: OHLCV[]): SMCAnalysis {
   const bias = score > 15 ? 'bullish' : score < -15 ? 'bearish' : 'neutral';
   const lastMSS = structurePoints.filter(p => p.type === 'CHoCH').pop() ?? null;
 
-  return { orderBlocks, fairValueGaps, structurePoints, liquidityZones, bias, biasScore: score, premiumDiscount, lastMSS };
+  const mitigationBlocks = detectMitigationBlocks(orderBlocks);
+  const breakerBlocks = detectBreakerBlocks(orderBlocks, lastPrice);
+  const inducementLevels = detectInducement(liquidityZones);
+  const displacementCandles = detectDisplacement(candles);
+  const propulsionBlocks = detectPropulsionBlocks(candles, fairValueGaps);
+
+  return {
+    orderBlocks, fairValueGaps, structurePoints, liquidityZones,
+    bias, biasScore: score, premiumDiscount, lastMSS,
+    mitigationBlocks, breakerBlocks, inducementLevels, displacementCandles, propulsionBlocks,
+  };
 }

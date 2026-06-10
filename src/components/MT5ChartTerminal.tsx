@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import AdvancedChart from '@/components/TradingView/AdvancedChart';
+import SMCLiveChart from '@/components/SMCLiveChart';
 import { getCandles, onCandleUpdate, seedHistoricalData, getPrice, startMarketData, stopMarketData } from '@/services/marketDataService';
 import { getRecentPatterns, CandlePattern } from '@/services/candlestickPatterns';
-import { analyzeSMC, SMCAnalysis } from '@/services/smcEngine';
+import { analyzeSMC, SMCAnalysis, OHLCV } from '@/services/smcEngine';
 import type { OHLCV as PatternOHLCV } from '@/services/candlestickPatterns';
 import {
   TrendingUp, TrendingDown, BarChart2, Activity, Layers, Zap,
@@ -181,6 +181,47 @@ function strengthDot(s: CandlePattern['strength']) {
   );
 }
 
+interface IndicatorRowProps {
+  ind: IndicatorDef;
+  activeIndicators: Set<string>;
+  favoriteIndicators: Set<string>;
+  toggleIndicator: (id: string) => void;
+  toggleFavorite: (id: string, e: React.MouseEvent) => void;
+  darkMode: boolean;
+  border: string;
+}
+
+function IndicatorRow({ ind, activeIndicators, favoriteIndicators, toggleIndicator, toggleFavorite, darkMode, border }: IndicatorRowProps) {
+  const isActive = activeIndicators.has(ind.id);
+  const isFav = favoriteIndicators.has(ind.id);
+  return (
+    <div
+      onClick={() => toggleIndicator(ind.id)}
+      title={ind.description}
+      className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-all border-b last:border-b-0 ${border} ${
+        isActive ? (darkMode ? 'bg-indigo-500/10' : 'bg-indigo-50') : (darkMode ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50')
+      }`}>
+      <div className={`w-3 h-3 rounded border flex-shrink-0 flex items-center justify-center ${isActive ? 'bg-indigo-500 border-indigo-500' : (darkMode ? 'border-gray-700' : 'border-gray-300')}`}>
+        {isActive && <span className="text-white text-[8px] font-bold">✓</span>}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[10px] font-semibold truncate ${isActive ? 'text-indigo-400' : (darkMode ? 'text-gray-300' : 'text-gray-700')}`}>
+          {ind.name}
+          {ind.custom && <span className="ml-1 text-[8px] text-emerald-400">●</span>}
+        </div>
+      </div>
+      <button
+        onClick={(e) => toggleFavorite(ind.id, e)}
+        className={`text-[11px] flex-shrink-0 transition-colors ${isFav ? 'text-amber-400' : 'text-gray-600 hover:text-amber-400'}`}
+        title={isFav ? 'Unfavorite' : 'Add to favorites'}
+      >
+        {isFav ? '★' : '☆'}
+      </button>
+      {isActive ? <Eye className="w-2.5 h-2.5 text-indigo-400 flex-shrink-0" /> : <EyeOff className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />}
+    </div>
+  );
+}
+
 export default function MT5ChartTerminal() {
   const { darkMode, lang } = useApp();
   const isBn = lang === 'bn';
@@ -192,12 +233,19 @@ export default function MT5ChartTerminal() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [patterns, setPatterns] = useState<CandlePattern[]>([]);
   const [smc, setSmc] = useState<SMCAnalysis | null>(null);
+  const [candles, setCandles] = useState<OHLCV[]>([]);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState(0);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const prevPriceRef = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [favoriteIndicators, setFavoriteIndicators] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('tb_fav_mt5');
+      return new Set(s ? JSON.parse(s) : []);
+    } catch { return new Set(); }
+  });
 
   useEffect(() => {
     startMarketData();
@@ -217,6 +265,7 @@ export default function MT5ChartTerminal() {
       time: typeof c.time === 'number' ? c.time : Number(c.time),
       open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
     }));
+    setCandles(candles as OHLCV[]);
     setPatterns(getRecentPatterns(candles, 6));
     setSmc(analyzeSMC(candles));
     const p = getPrice(symbol);
@@ -243,14 +292,18 @@ export default function MT5ChartTerminal() {
     });
   };
 
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteIndicators(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem('tb_fav_mt5', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
   const toggleSection = (sec: string) => setCollapsed(p => ({ ...p, [sec]: !p[sec] }));
 
-  // Build TradingView studies from active TV indicators
-  const tvStudies = [...activeIndicators]
-    .map(id => INDICATOR_CATALOG.find(i => i.id === id))
-    .filter((i): i is IndicatorDef => !!i && !!i.tvStudy && !i.custom)
-    .map(i => i.tvStudy!);
-  const uniqueStudies = [...new Set(tvStudies)];
 
   const filteredIndicators = INDICATOR_CATALOG.filter(i => {
     const matchCat = category === 'All' || i.category === category;
@@ -356,9 +409,23 @@ export default function MT5ChartTerminal() {
                 ))}
               </div>
 
+              {/* Favorites section */}
+              {favoriteIndicators.size > 0 && !search && (
+                <div>
+                  <div className={`flex items-center gap-1 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider border-b ${border} text-amber-400`}>
+                    <Star className="w-2.5 h-2.5 fill-amber-400" />
+                    Favorites ({favoriteIndicators.size})
+                  </div>
+                  {INDICATOR_CATALOG.filter(i => favoriteIndicators.has(i.id)).map(ind => (
+                    <IndicatorRow key={ind.id} ind={ind} activeIndicators={activeIndicators} favoriteIndicators={favoriteIndicators}
+                      toggleIndicator={toggleIndicator} toggleFavorite={toggleFavorite} darkMode={darkMode} border={border} />
+                  ))}
+                </div>
+              )}
+
               {/* Indicator list by category */}
               {(category === 'All' ? CATEGORIES.slice(1) : [category]).map(cat => {
-                const items = category === 'All' ? INDICATOR_CATALOG.filter(i => i.category === cat && (!search || i.name.toLowerCase().includes(search.toLowerCase()))) : filteredIndicators;
+                const items = category === 'All' ? INDICATOR_CATALOG.filter(i => i.category === cat && (!search || i.name.toLowerCase().includes(search.toLowerCase()) || i.description.toLowerCase().includes(search.toLowerCase()))) : filteredIndicators;
                 if (items.length === 0) return null;
                 const isCollapsed = collapsed[cat];
                 return (
@@ -377,26 +444,9 @@ export default function MT5ChartTerminal() {
                       </span>
                       {isCollapsed ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronUp className="w-2.5 h-2.5" />}
                     </button>
-                    {!isCollapsed && (category === 'All' ? items : filteredIndicators).filter(i => i.category === cat || category !== 'All').map(ind => (
-                      <div key={ind.id}
-                        onClick={() => toggleIndicator(ind.id)}
-                        title={ind.description}
-                        className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-all border-b last:border-b-0 ${border} ${
-                          activeIndicators.has(ind.id)
-                            ? (darkMode ? 'bg-indigo-500/10' : 'bg-indigo-50')
-                            : (darkMode ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50')
-                        }`}>
-                        <div className={`w-3 h-3 rounded border flex-shrink-0 flex items-center justify-center ${activeIndicators.has(ind.id) ? 'bg-indigo-500 border-indigo-500' : (darkMode ? 'border-gray-700' : 'border-gray-300')}`}>
-                          {activeIndicators.has(ind.id) && <span className="text-white text-[8px] font-bold">✓</span>}
-                        </div>
-                        <div className="min-w-0">
-                          <div className={`text-[10px] font-semibold truncate ${activeIndicators.has(ind.id) ? 'text-indigo-400' : (darkMode ? 'text-gray-300' : 'text-gray-700')}`}>
-                            {ind.name}
-                            {ind.custom && <span className="ml-1 text-[8px] text-emerald-400">●</span>}
-                          </div>
-                        </div>
-                        {activeIndicators.has(ind.id) ? <Eye className="w-2.5 h-2.5 text-indigo-400 ml-auto flex-shrink-0" /> : <EyeOff className="w-2.5 h-2.5 text-gray-600 ml-auto flex-shrink-0" />}
-                      </div>
+                    {!isCollapsed && items.filter(i => i.category === cat).map(ind => (
+                      <IndicatorRow key={ind.id} ind={ind} activeIndicators={activeIndicators} favoriteIndicators={favoriteIndicators}
+                        toggleIndicator={toggleIndicator} toggleFavorite={toggleFavorite} darkMode={darkMode} border={border} />
                     ))}
                   </div>
                 );
@@ -410,13 +460,15 @@ export default function MT5ChartTerminal() {
           )}
         </div>
 
-        {/* ── CENTER: TradingView Chart ── */}
+        {/* ── CENTER: SMC Live Chart ── */}
         <div className="flex-1 flex flex-col min-w-0">
-          <AdvancedChart
+          <SMCLiveChart
             symbol={symbol}
-            interval={timeframe}
+            candles={candles}
+            smc={smc}
+            activeIndicators={activeIndicators}
+            darkMode={darkMode}
             height="100%"
-            studies={uniqueStudies.length > 0 ? uniqueStudies : ['RSI@tv-basicstudies', 'MACD@tv-basicstudies', 'Volume@tv-basicstudies']}
           />
         </div>
 
@@ -539,6 +591,100 @@ export default function MT5ChartTerminal() {
                         </span>
                         <span className="font-mono text-gray-400">{fmt(z.price, isXAU)}</span>
                         <span className={`text-[8px] ${sub}`}>{z.strength}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Mitigation Blocks */}
+              {smc && activeIndicators.has('SMC_MITIGATION') && smc.mitigationBlocks.length > 0 && (
+                <div className={card}>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${sub}`}>
+                    <span className="w-2.5 h-2.5 inline-block rounded-sm bg-purple-500/50" />Mitigation Blocks
+                  </div>
+                  <div className="space-y-1">
+                    {smc.mitigationBlocks.slice(-3).map((mb, i) => (
+                      <div key={i} className="flex items-center justify-between text-[9px] px-1.5 py-1 rounded bg-purple-500/10">
+                        <span className="font-bold text-purple-400">{mb.type === 'bullish' ? '▲' : '▼'} Mit.</span>
+                        <span className="font-mono text-gray-400">{fmt(mb.low, isXAU)}–{fmt(mb.high, isXAU)}</span>
+                        <span className="text-purple-300 text-[8px]">Mitigated</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Breaker Blocks */}
+              {smc && activeIndicators.has('SMC_BREAKER') && smc.breakerBlocks.length > 0 && (
+                <div className={card}>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${sub}`}>
+                    <span className="w-2.5 h-2.5 inline-block rounded-sm bg-orange-500/50" />Breaker Blocks
+                  </div>
+                  <div className="space-y-1">
+                    {smc.breakerBlocks.slice(-3).map((bb, i) => (
+                      <div key={i} className="flex items-center justify-between text-[9px] px-1.5 py-1 rounded bg-orange-500/10">
+                        <span className="font-bold text-orange-400">{bb.type === 'bullish' ? '▲' : '▼'} Brk</span>
+                        <span className="font-mono text-gray-400">{fmt(bb.low, isXAU)}–{fmt(bb.high, isXAU)}</span>
+                        <span className="text-orange-300 text-[8px]">{bb.flipDirection === 'now-resistance' ? 'Res.' : 'Sup.'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Inducement */}
+              {smc && activeIndicators.has('SMC_INDUCEMENT') && smc.inducementLevels.length > 0 && (
+                <div className={card}>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${sub}`}>
+                    <span className="w-2.5 h-2.5 inline-block rounded-sm bg-fuchsia-500/50" />Inducement
+                  </div>
+                  <div className="space-y-1">
+                    {smc.inducementLevels.slice(-3).map((ind, i) => (
+                      <div key={i} className="flex items-center justify-between text-[9px]">
+                        <span className={`${ind.type === 'buy-side' ? 'text-fuchsia-400' : 'text-pink-400'}`}>
+                          {ind.type === 'buy-side' ? '▲ BSL' : '▼ SSL'} Trap
+                        </span>
+                        <span className="font-mono text-gray-400">{fmt(ind.price, isXAU)}</span>
+                        <span className={`text-[8px] ${sub}`}>Swept</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Displacement */}
+              {smc && activeIndicators.has('SMC_DISPLACEMENT') && smc.displacementCandles.length > 0 && (
+                <div className={card}>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${sub}`}>
+                    <Zap className="w-2.5 h-2.5 text-lime-400" />Displacement
+                  </div>
+                  <div className="space-y-1">
+                    {smc.displacementCandles.slice(-3).map((dc, i) => (
+                      <div key={i} className={`flex items-center justify-between text-[9px] px-1.5 py-1 rounded ${dc.type === 'bullish' ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                        <span className={`font-bold ${dc.type === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
+                          {dc.type === 'bullish' ? '▲' : '▼'} Disp.
+                        </span>
+                        <span className="font-mono text-gray-400">{fmt(dc.close, isXAU)}</span>
+                        <span className="text-lime-400">×{dc.bodyRatio.toFixed(1)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Propulsion Blocks */}
+              {smc && activeIndicators.has('SMC_PROPULSION') && smc.propulsionBlocks.length > 0 && (
+                <div className={card}>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1 ${sub}`}>
+                    <span className="w-2.5 h-2.5 inline-block rounded-sm bg-cyan-500/50" />Propulsion
+                  </div>
+                  <div className="space-y-1">
+                    {smc.propulsionBlocks.slice(-3).map((pb, i) => (
+                      <div key={i} className="flex items-center justify-between text-[9px] px-1.5 py-1 rounded bg-cyan-500/10">
+                        <span className="font-bold text-cyan-400">{pb.type === 'bullish' ? '▲' : '▼'} Prop</span>
+                        <span className="font-mono text-gray-400">{fmt(pb.low, isXAU)}–{fmt(pb.high, isXAU)}</span>
+                        <span className="text-cyan-300 text-[8px]">Pre-FVG</span>
                       </div>
                     ))}
                   </div>
