@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Download,
   Calculator,
+  GripHorizontal,
 } from 'lucide-react';
 
 // Backtest types
@@ -113,7 +114,12 @@ export default function TradePanel({
   const [tpValue, setTpValue] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'backtest'>('positions');
-  const [orderFormHeight, setOrderFormHeight] = useState(260);
+  const [orderFormHeight, setOrderFormHeight] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    if (vh < 700) return 190;
+    if (vh < 850) return 220;
+    return 260;
+  });
 
   // Backtest state
   const [backtestStrategy, setBacktestStrategy] = useState<BacktestStrategy>('fvg_bounce');
@@ -660,10 +666,14 @@ export default function TradePanel({
           )}
         </div>
 
-        {/* CORE SEND TRANSACTION TRIGGER BUTTON */}
+      </div>
+      </div>
+
+      {/* PLACE ORDER button — always visible, outside the scrollable form */}
+      <div className="px-3 py-2 shrink-0 bg-[#0d1117] border-b border-[#1e273d]">
         <button
           onClick={handlePlaceOrder}
-          className={`w-full py-3 rounded-lg font-black font-sans uppercase tracking-widest transition-all active:scale-95 shadow-lg flex flex-col items-center justify-center gap-0.5 ${
+          className={`w-full py-2.5 rounded-lg font-black font-sans uppercase tracking-widest transition-all active:scale-95 shadow-lg flex flex-col items-center justify-center gap-0.5 ${
             tradeType === 'BUY'
               ? 'bg-[#00e676] hover:bg-emerald-400 text-black shadow-[#00e676]/20'
               : 'bg-[#ff3d57] hover:bg-red-400 text-white shadow-[#ff3d57]/20'
@@ -678,17 +688,16 @@ export default function TradePanel({
           </span>
         </button>
       </div>
-      </div>
 
-      {/* Vertical resize handle — drag to adjust order form vs. positions heights */}
+      {/* Vertical resize handle — drag or touch to adjust order form vs. positions heights */}
       <div
-        className="h-2 bg-[#1b253b] hover:bg-indigo-500/50 cursor-row-resize shrink-0 flex items-center justify-center group transition-colors select-none"
+        className="h-4 bg-[#1b253b] hover:bg-indigo-500/50 active:bg-indigo-500/60 cursor-row-resize shrink-0 flex items-center justify-center group transition-colors select-none touch-none"
+        title="ওপরে-নিচে টানুন · Drag to resize sections"
         onMouseDown={e => {
           const startY = e.clientY;
           const startH = orderFormHeight;
           const onMove = (ev: MouseEvent) => {
-            const delta = ev.clientY - startY;
-            setOrderFormHeight(Math.max(160, Math.min(520, startH + delta)));
+            setOrderFormHeight(Math.max(140, Math.min(520, startH + ev.clientY - startY)));
           };
           const onUp = () => {
             window.removeEventListener('mousemove', onMove);
@@ -698,13 +707,30 @@ export default function TradePanel({
           window.addEventListener('mouseup', onUp);
           e.preventDefault();
         }}
-        title="Drag to resize"
+        onTouchStart={e => {
+          const startY = e.touches[0].clientY;
+          const startH = orderFormHeight;
+          const onMove = (ev: TouchEvent) => {
+            setOrderFormHeight(Math.max(140, Math.min(520, startH + ev.touches[0].clientY - startY)));
+          };
+          const onEnd = () => {
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend', onEnd);
+          };
+          window.addEventListener('touchmove', onMove, { passive: false });
+          window.addEventListener('touchend', onEnd);
+          e.preventDefault();
+        }}
       >
-        <div className="w-10 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
+        <div className="flex gap-1.5 items-center">
+          <div className="w-6 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
+          <GripHorizontal className="w-3.5 h-3.5 text-gray-600 group-hover:text-indigo-400 transition-colors" />
+          <div className="w-6 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
+        </div>
       </div>
 
       {/* 3. SIMULATED OPEN POSITIONS & RECENT CLOSED POSITIONS TRACE */}
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 130 }}>
         
         {/* Tab selector */}
         <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-gray-950/20">
