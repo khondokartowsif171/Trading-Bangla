@@ -542,6 +542,10 @@ export default function App() {
     }));
   };
 
+  const handleCloseAllPositions = () => {
+    positions.forEach((pos) => closePosition(pos.id));
+  };
+
   const flashNotification = (txt: string) => {
     setAlertNotify(txt);
     setTimeout(() => {
@@ -1112,6 +1116,7 @@ export default function App() {
               account={account}
               onOpenPosition={handleOpenPosition}
               onClosePosition={closePosition}
+              onCloseAllPositions={handleCloseAllPositions}
               onResetAccount={handleResetHistory}
               onClose={() => setShowTradePanel(false)}
               currentWidth={tradePanelWidth}

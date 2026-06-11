@@ -415,15 +415,19 @@ export default function ChartingTool({
     const pip = pair.pip;
     const dec = pair.dec;
 
-    // Regenerate frozen history ONLY when pair or timeframe changes (not on every tick)
+    // Compute current period boundary early (needed for needsRegen check)
+    const nowRounded = Math.floor(liveCandle.t / intervalMs) * intervalMs;
+
+    // Regenerate frozen history when: pair/TF changes, OR >50 periods elapsed (user was away)
     const needsRegen =
       !historyCache.current ||
       historyCache.current.sym !== pair.sym ||
-      historyCache.current.tf !== timeframe;
+      historyCache.current.tf !== timeframe ||
+      (nowRounded - historyCache.current.path[historyCache.current.path.length - 1].t) / intervalMs > 50;
 
     if (needsRegen) {
       const anchorPrice = liveCandle.c;
-      const nowRoundedAnchor = Math.floor(liveCandle.t / intervalMs) * intervalMs;
+      const nowRoundedAnchor = nowRounded;
 
       const tenYearsMinutes = 10 * 365 * 24 * 60;
       const rawCount = Math.floor(tenYearsMinutes / T);
@@ -467,22 +471,44 @@ export default function ChartingTool({
       historyCache.current = { sym: pair.sym, tf: timeframe, path: genPath };
     }
 
-    // Shallow-copy the frozen history and overwrite only the last (forming) candle with live data
-    const nowRounded = Math.floor(liveCandle.t / intervalMs) * intervalMs;
-    const path = [...historyCache.current.path];
-    const lastIdx = path.length - 1;
-    const formingOpen = lastIdx > 0 ? path[lastIdx - 1].c : liveCandle.c;
+    const cache = historyCache.current!;
 
-    path[lastIdx] = {
+    // Period rollover: seal old forming candle, append new forming period
+    const cachedLastTime = cache.path[cache.path.length - 1].t;
+    if (nowRounded > cachedLastTime) {
+      // Old forming candle at cache.path[last] already has running H/L from in-place updates
+      cache.path.shift();  // drop oldest historical candle (keep array at fixed size)
+      const newOpen = Number(cache.path[cache.path.length - 1].c.toFixed(dec));
+      cache.path.push({
+        t: nowRounded,
+        o: newOpen,
+        h: Number(Math.max(newOpen, liveCandle.h).toFixed(dec)),
+        l: Number(Math.min(newOpen, liveCandle.l).toFixed(dec)),
+        c: Number(liveCandle.c.toFixed(dec)),
+        v: liveCandle.v,
+      });
+    }
+
+    // Update forming candle IN-PLACE with running H/L on every tick
+    const lastInCache = cache.path[cache.path.length - 1];
+    const formingOpen = Number((cache.path.length > 1
+      ? cache.path[cache.path.length - 2].c
+      : liveCandle.c).toFixed(dec));
+
+    // Accumulate running max/min since period start; reset if somehow period doesn't match
+    const prevH = lastInCache.t === nowRounded ? lastInCache.h : formingOpen;
+    const prevL = lastInCache.t === nowRounded ? lastInCache.l : formingOpen;
+
+    cache.path[cache.path.length - 1] = {
       t: nowRounded,
       o: formingOpen,
-      h: Math.max(formingOpen, liveCandle.h),
-      l: Math.min(formingOpen, liveCandle.l),
-      c: liveCandle.c,
+      h: Number(Math.max(prevH, liveCandle.h, liveCandle.c).toFixed(dec)),
+      l: Number(Math.min(prevL, liveCandle.l, liveCandle.c).toFixed(dec)),
+      c: Number(liveCandle.c.toFixed(dec)),
       v: liveCandle.v,
     };
 
-    return path;
+    return [...cache.path];  // new array reference so React re-renders
   }, [candles, timeframe, pair]);
 
   // Derive transformed candle set based on chosen view

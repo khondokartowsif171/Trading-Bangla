@@ -79,6 +79,7 @@ interface TradePanelProps {
   onOpenPosition: (type: 'BUY' | 'SELL', lots: number, leverage: number, slPrice?: number, tpPrice?: number) => void;
   onClosePosition: (id: string) => void;
   onResetAccount: () => void;
+  onCloseAllPositions?: () => void;
   onClose?: () => void;
   currentWidth?: number;
   onWidthChange?: (newWidth: number) => void;
@@ -94,6 +95,7 @@ export default function TradePanel({
   onOpenPosition,
   onClosePosition,
   onResetAccount,
+  onCloseAllPositions,
   onClose,
   currentWidth,
   onWidthChange,
@@ -749,6 +751,14 @@ export default function TradePanel({
               </div>
             ) : (
               <div className="space-y-2">
+                {positions.length > 0 && onCloseAllPositions && (
+                  <button
+                    onClick={onCloseAllPositions}
+                    className="w-full py-1.5 rounded text-xs font-bold bg-red-900/60 hover:bg-red-800/80 text-red-300 hover:text-white border border-red-700/40 transition"
+                  >
+                    সব পজিশন বন্ধ করুন · Close All ({positions.length})
+                  </button>
+                )}
                 {positions.map((pos) => {
                   const pnl = getPositionPnL(pos);
                   const isProfit = pnl >= 0;
