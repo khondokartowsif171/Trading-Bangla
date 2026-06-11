@@ -469,15 +469,18 @@ export default function ChartingTool({
     // Since we created history going backwards, reverse it to chronological order (oldest to newest)
     path.reverse();
 
-    // Overwrite the last candle with live dynamic ticks from parent to connect smoothly
+    // Replace the last candle with a real-time forming candle (TradingView-style)
+    // Open = previous period's close; H/L = actual range since open; C = live price
     if (path.length > 0) {
       const lastIdx = path.length - 1;
+      const formingOpen = lastIdx > 0 ? path[lastIdx - 1].c : currentPrice;
       path[lastIdx] = {
-        ...path[lastIdx],
+        t: nowRounded,
+        o: formingOpen,
+        h: Math.max(formingOpen, liveCandle.c),
+        l: Math.min(formingOpen, liveCandle.c),
         c: liveCandle.c,
-        h: Math.max(path[lastIdx].h, liveCandle.h),
-        l: Math.min(path[lastIdx].l, liveCandle.l),
-        v: path[lastIdx].v + liveCandle.v,
+        v: liveCandle.v,
       };
     }
 

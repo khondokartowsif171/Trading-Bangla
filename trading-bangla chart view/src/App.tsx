@@ -295,18 +295,23 @@ export default function App() {
           const list = [...config.sparkline];
           let newest = { ...list[list.length - 1] };
 
-          // Determine if market is open: live price must exist AND have been updated within 60s
+          // Determine if live price is fresh (within 30s)
           const livePx = liveRef.current[symbolKey];
           const liveAge = now - (liveTimestampRef.current[symbolKey] ?? 0);
-          const isMarketOpen = livePx !== undefined && liveAge < 60000;
+          const isLiveFresh = livePx !== undefined && liveAge < 30000;
 
-          // Real price when open; flat when closed — no random walk
-          const updatedClose = isMarketOpen ? livePx : newest.c;
+          // Real price when live and fresh; gentle simulation otherwise (keeps chart alive for demo trading)
+          let updatedClose: number;
+          if (isLiveFresh) {
+            updatedClose = livePx;
+          } else {
+            updatedClose = Number((newest.c + (Math.random() - 0.5) * config.pip * 0.3).toFixed(config.dec));
+          }
 
-          // Seal at real clock-minute boundary (TradingView-style), only when market is open
+          // ALWAYS seal at real clock-minute boundary — all timeframes (M1/M5/H1/H4/D1) always work
           const currentPeriod = Math.floor(now / M1_MS) * M1_MS;
           const newestPeriod = Math.floor(newest.t / M1_MS) * M1_MS;
-          const shouldSpawnNewCandle = isMarketOpen && currentPeriod > newestPeriod;
+          const shouldSpawnNewCandle = currentPeriod > newestPeriod;
 
           newest.t = now; // keep current so aggregatedCandles tracks real TF period boundaries
           newest.c = Number(updatedClose.toFixed(config.dec));
