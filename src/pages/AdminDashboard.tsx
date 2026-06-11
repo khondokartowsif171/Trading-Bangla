@@ -492,10 +492,10 @@ export default function AdminDashboard() {
                 <div className={`rounded-xl overflow-hidden border ${cardBg}`}>
                   <table className="w-full text-sm">
                     <thead><tr className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
-                      {['User', 'Role', 'Joined'].map(h => <th key={h} className={`px-4 py-3 text-left text-xs uppercase tracking-wider font-medium ${textMuted}`}>{h}</th>)}
+                      {['Name', 'Email', 'Mobile', 'Role', 'Joined'].map(h => <th key={h} className={`px-4 py-3 text-left text-xs uppercase tracking-wider font-medium ${textMuted}`}>{h}</th>)}
                     </tr></thead>
                     <tbody>
-                      {recentUsers.length === 0 ? <tr><td colSpan={3} className={`px-4 py-8 text-center text-xs ${textMuted}`}>No users</td></tr>
+                      {recentUsers.length === 0 ? <tr><td colSpan={5} className={`px-4 py-8 text-center text-xs ${textMuted}`}>No users</td></tr>
                         : recentUsers.map(u => (
                           <tr key={u.id} className={`border-b transition-colors ${darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'}`}>
                             <td className="px-4 py-3">
@@ -504,6 +504,8 @@ export default function AdminDashboard() {
                                 <span className={`font-medium ${textPrimary}`}>{u.full_name ?? 'Unknown'}</span>
                               </div>
                             </td>
+                            <td className={`px-4 py-3 text-xs ${textMuted} max-w-[140px] truncate`}>{u.email ?? '—'}</td>
+                            <td className={`px-4 py-3 text-xs ${textMuted}`}>{u.phone || '—'}</td>
                             <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${u.role === 'admin' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span></td>
                             <td className={`px-4 py-3 text-xs ${textMuted}`}>{formatDate(u.created_at)}</td>
                           </tr>))}
