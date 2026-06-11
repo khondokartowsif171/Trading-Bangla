@@ -184,7 +184,7 @@ export default function Navbar() {
                 className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-xs font-medium text-yellow-400 transition-all"
               >
                 <User className="w-3.5 h-3.5" />
-                লগইন · Login
+                {t('login')}
               </button>
             )}
 
@@ -239,7 +239,7 @@ export default function Navbar() {
                       onClick={() => { openLoginModal(); setMobileOpen(false); }}
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold text-xs"
                     >
-                      নিবন্ধন / লগইন করুন
+                      {t('registerLogin')} · {t('registerFree')}
                     </button>
                   </div>
                 )}

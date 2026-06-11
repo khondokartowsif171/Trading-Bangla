@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, LogIn, UserPlus, X, Eye, EyeOff, Mail, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useApp } from '@/context/AppContext';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ type Tab = 'login' | 'register';
 
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const { login, register, loginWithGoogle, resendConfirmation } = useAuth();
+  const { t } = useApp();
   const [tab, setTab] = useState<Tab>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,11 +74,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     e.preventDefault();
     setError('');
     if (password !== confirmPassword) {
-      setError('পাসওয়ার্ড মিলছে না।');
+      setError(t('passwordMismatch'));
       return;
     }
     if (password.length < 6) {
-      setError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে।');
+      setError(t('passwordTooShort'));
       return;
     }
     setLoading(true);
@@ -85,7 +87,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     if (error) {
       setError(error);
     } else {
-      setSuccess('Account তৈরি হয়েছে! এখন Login tab-এ গিয়ে login করুন।');
+      setSuccess(t('accountCreated'));
     }
   };
 
@@ -130,7 +132,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-white">Trading Bangla</h2>
-                      <p className="text-xs text-gray-400">সব সিগন্যাল ও EA data দেখুন</p>
+                      <p className="text-xs text-gray-400">{t('allFeatures')} · {t('premiumFeatures')}</p>
                     </div>
                   </div>
                   <button
@@ -152,7 +154,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     }`}
                   >
                     <LogIn className="w-3.5 h-3.5" />
-                    Login
+                    {t('login')}
                   </button>
                   <button
                     onClick={() => switchTab('register')}
@@ -163,7 +165,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     }`}
                   >
                     <UserPlus className="w-3.5 h-3.5" />
-                    Register
+                    {t('register')}
                   </button>
                 </div>
 
@@ -180,12 +182,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                   </svg>
-                  Google দিয়ে {tab === 'register' ? 'Sign Up' : 'Login'} করুন
+                  Google {tab === 'register' ? t('register') : t('login')}
                 </button>
 
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex-1 h-px bg-gray-700" />
-                  <span className="text-xs text-gray-500">অথবা email দিয়ে</span>
+                  <span className="text-xs text-gray-500">{t('orWithEmail')}</span>
                   <div className="flex-1 h-px bg-gray-700" />
                 </div>
 
@@ -202,7 +204,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                       className="space-y-3.5"
                     >
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Email</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('email')}</label>
                         <input
                           type="email"
                           value={email}
@@ -213,7 +215,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('password')}</label>
                         <div className="relative">
                           <input
                             type={showPassword ? 'text' : 'password'}
@@ -246,7 +248,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                               <button type="button" onClick={handleResend} disabled={resendLoading}
                                 className="flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-60 transition-colors">
                                 <RefreshCw className={`w-3 h-3 ${resendLoading ? 'animate-spin' : ''}`} />
-                                {resendLoading ? 'Sending…' : 'Confirmation email পাঠান'}
+                                {resendLoading ? t('loading') : t('sendConfirmEmail')}
                               </button>
                             )}
                             {resendSuccess && (
@@ -271,7 +273,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         ) : (
                           <LogIn className="w-4 h-4" />
                         )}
-                        {loading ? 'Logging in...' : 'Login করুন'}
+                        {loading ? t('signingIn') : t('login')}
                       </button>
                     </motion.form>
                   ) : (
@@ -285,18 +287,18 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                       className="space-y-3.5"
                     >
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Full Name · পুরো নাম</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('fullName')}</label>
                         <input
                           type="text"
                           value={name}
                           onChange={e => { setName(e.target.value); setError(''); }}
-                          placeholder="আপনার নাম"
+                          placeholder={t('fullName')}
                           required
                           className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30 transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Mobile Number · মোবাইল নম্বর</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('mobileNumber')}</label>
                         <input
                           type="tel"
                           value={phone}
@@ -306,7 +308,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Email</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('email')}</label>
                         <input
                           type="email"
                           value={email}
@@ -317,13 +319,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('password')}</label>
                         <div className="relative">
                           <input
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={e => { setPassword(e.target.value); setError(''); }}
-                            placeholder="কমপক্ষে ৬ অক্ষর"
+                            placeholder={t('passwordTooShort')}
                             required
                             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 pr-10 text-sm text-white placeholder-gray-500 outline-none focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30 transition-all"
                           />
@@ -337,12 +339,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Confirm Password</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">{t('confirmPassword')}</label>
                         <input
                           type={showPassword ? 'text' : 'password'}
                           value={confirmPassword}
                           onChange={e => { setConfirmPassword(e.target.value); setError(''); }}
-                          placeholder="পাসওয়ার্ড আবার দিন"
+                          placeholder={t('confirmPassword')}
                           required
                           className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30 transition-all"
                         />
@@ -384,7 +386,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         ) : (
                           <UserPlus className="w-4 h-4" />
                         )}
-                        {loading ? 'Creating account...' : 'Account তৈরি করুন'}
+                        {loading ? t('creatingAccount') : t('createAccount')}
                       </button>
                     </motion.form>
                   )}
