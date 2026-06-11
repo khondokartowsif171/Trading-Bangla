@@ -23,7 +23,6 @@ import {
   ChevronRight,
   Download,
   Calculator,
-  GripHorizontal,
 } from 'lucide-react';
 
 // Backtest types
@@ -114,12 +113,6 @@ export default function TradePanel({
   const [tpValue, setTpValue] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'backtest'>('positions');
-  const [orderFormHeight, setOrderFormHeight] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
-    if (vh < 700) return 190;
-    if (vh < 850) return 220;
-    return 260;
-  });
 
   // Backtest state
   const [backtestStrategy, setBacktestStrategy] = useState<BacktestStrategy>('fvg_bounce');
@@ -473,7 +466,7 @@ export default function TradePanel({
       )}
 
       {/* 2. ORDER PLACEMENT PANEL */}
-      <div className="bg-[#111625]/50 border-b border-[#1e273d] overflow-y-auto shrink-0" style={{ height: orderFormHeight }}>
+      <div className="bg-[#111625]/50 border-b border-[#1e273d] overflow-y-auto" style={{ flex: '3 1 0', minHeight: 0 }}>
       <div className="p-3.5 space-y-3">
         <div className="flex bg-gray-900/60 p-1 rounded-lg">
           <button
@@ -689,48 +682,9 @@ export default function TradePanel({
         </button>
       </div>
 
-      {/* Vertical resize handle — drag or touch to adjust order form vs. positions heights */}
-      <div
-        className="h-4 bg-[#1b253b] hover:bg-indigo-500/50 active:bg-indigo-500/60 cursor-row-resize shrink-0 flex items-center justify-center group transition-colors select-none touch-none"
-        title="ওপরে-নিচে টানুন · Drag to resize sections"
-        onMouseDown={e => {
-          const startY = e.clientY;
-          const startH = orderFormHeight;
-          const onMove = (ev: MouseEvent) => {
-            setOrderFormHeight(Math.max(140, Math.min(520, startH + ev.clientY - startY)));
-          };
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-          };
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
-          e.preventDefault();
-        }}
-        onTouchStart={e => {
-          const startY = e.touches[0].clientY;
-          const startH = orderFormHeight;
-          const onMove = (ev: TouchEvent) => {
-            setOrderFormHeight(Math.max(140, Math.min(520, startH + ev.touches[0].clientY - startY)));
-          };
-          const onEnd = () => {
-            window.removeEventListener('touchmove', onMove);
-            window.removeEventListener('touchend', onEnd);
-          };
-          window.addEventListener('touchmove', onMove, { passive: false });
-          window.addEventListener('touchend', onEnd);
-          e.preventDefault();
-        }}
-      >
-        <div className="flex gap-1.5 items-center">
-          <div className="w-6 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
-          <GripHorizontal className="w-3.5 h-3.5 text-gray-600 group-hover:text-indigo-400 transition-colors" />
-          <div className="w-6 h-0.5 rounded-full bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
-        </div>
-      </div>
 
       {/* 3. SIMULATED OPEN POSITIONS & RECENT CLOSED POSITIONS TRACE */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 130 }}>
+      <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0', minHeight: 120 }}>
         
         {/* Tab selector */}
         <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-gray-950/20">
