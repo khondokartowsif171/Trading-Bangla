@@ -82,7 +82,7 @@ export default function UserProfile() {
         totalPnl: closed.reduce((s, t) => s + (t.pnl ?? 0), 0),
         openTrades: all.filter(t => t.status === 'open').length,
       });
-      setRecentTrades(all.slice(0, 5));
+      setRecentTrades(all);
     }
     setFetching(false);
   }
@@ -154,8 +154,9 @@ export default function UserProfile() {
                   </>
                 )}
               </div>
-              <p className="text-gray-400 text-sm mb-2">{user.email}</p>
-              <div className="flex items-center gap-3">
+              <p className="text-gray-400 text-sm">{user.email}</p>
+              {user.phone && <p className="text-gray-500 text-xs mb-1">📱 {user.phone}</p>}
+              <div className="flex items-center gap-3 mt-2">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                   profile?.role === 'admin'
                     ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
@@ -195,15 +196,19 @@ export default function UserProfile() {
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
           className="rounded-2xl border border-gray-800 bg-gray-900 overflow-hidden"
         >
-          <div className="px-6 py-4 border-b border-gray-800">
-            <h2 className="font-bold text-white">Recent Trades</h2>
+          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 className="font-bold text-white">Trade History</h2>
+            {recentTrades.length > 0 && (
+              <span className="text-xs text-gray-500">{recentTrades.length} trades</span>
+            )}
           </div>
           {recentTrades.length === 0 ? (
             <div className="px-6 py-10 text-center text-gray-500 text-sm">
               কোনো trade নেই এখনো —{' '}
-              <Link to="/dashboard" className="text-yellow-400 hover:underline">Dashboard থেকে trade করুন</Link>
+              <Link to="/forex" className="text-yellow-400 hover:underline">MT5 Terminal থেকে trade করুন</Link>
             </div>
           ) : (
+            <div className="overflow-y-auto max-h-96">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-800 text-xs text-gray-400 uppercase tracking-wider">
@@ -240,6 +245,7 @@ export default function UserProfile() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </motion.div>
 

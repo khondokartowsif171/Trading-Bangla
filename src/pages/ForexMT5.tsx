@@ -1,11 +1,62 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function ForexMT5() {
   const { darkMode } = useApp();
+  const { user } = useAuth();
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const positionToDbId = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const handler = async (e: MessageEvent) => {
+      if (!user) return;
+      // Only trust messages from same origin (iframe is same-origin)
+      if (e.origin && e.origin !== window.location.origin && e.origin !== 'null') return;
+
+      if (e.data?.type === 'TRADE_OPEN') {
+        const { positionId, symbol, tradeType, lots, entryPrice, sl, tp } = e.data.trade;
+        const { data } = await supabase
+          .from('demo_trades')
+          .insert({
+            user_id: user.id,
+            symbol,
+            type: tradeType,
+            entry_price: entryPrice,
+            lot_size: lots,
+            pnl: 0,
+            status: 'open',
+            opened_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+        if (data?.id) positionToDbId.current.set(positionId, data.id);
+      }
+
+      if (e.data?.type === 'TRADE_CLOSE') {
+        const { positionId, closePrice, pnl } = e.data;
+        const dbId = positionToDbId.current.get(positionId);
+        if (dbId) {
+          await supabase
+            .from('demo_trades')
+            .update({
+              exit_price: closePrice,
+              pnl,
+              status: 'closed',
+              closed_at: new Date().toISOString(),
+            })
+            .eq('id', dbId);
+          positionToDbId.current.delete(positionId);
+        }
+      }
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [user]);
 
   return (
     <div className="relative" style={{ width: '100%', height: 'calc(100vh - 56px)' }}>

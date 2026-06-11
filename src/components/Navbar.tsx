@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
   const { darkMode, toggleDarkMode, lang, setLang, t, balance } = useApp();
-  const { isLoggedIn, user, logout } = useAuth();
+  const { isLoggedIn, user, logout, openLoginModal } = useAuth();
   const { pendingCount } = usePriceAlerts();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -179,13 +179,13 @@ export default function Navbar() {
                 </AnimatePresence>
               </div>
             ) : (
-              <Link
-                to="/ea-analytics"
+              <button
+                onClick={openLoginModal}
                 className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-xs font-medium text-yellow-400 transition-all"
               >
                 <User className="w-3.5 h-3.5" />
-                Login
-              </Link>
+                লগইন · Login
+              </button>
             )}
 
             {/* Mobile menu toggle */}
@@ -233,6 +233,16 @@ export default function Navbar() {
                     </Link>
                   </motion.div>
                 ))}
+                {!isLoggedIn && (
+                  <div className="pt-2 border-t border-gray-800/50 px-1">
+                    <button
+                      onClick={() => { openLoginModal(); setMobileOpen(false); }}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold text-xs"
+                    >
+                      নিবন্ধন / লগইন করুন
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

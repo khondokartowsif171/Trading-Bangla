@@ -469,6 +469,21 @@ export default function App() {
 
     setPositions((prev) => [...prev, newPosition]);
     flashNotification(`📈 ${type} ${lots} Lots ${panel1SelectedSym} ট্রেড সফলভাবে ওপেন হয়েছে!`);
+
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'TRADE_OPEN',
+        trade: {
+          positionId: newPosition.id,
+          symbol: newPosition.sym,
+          tradeType: newPosition.type,
+          lots: newPosition.lots,
+          entryPrice: newPosition.entryPrice,
+          sl: newPosition.sl ?? 0,
+          tp: newPosition.tp ?? 0,
+        },
+      }, '*');
+    }
   };
 
   // Close simulated trade and settle returns
@@ -516,6 +531,15 @@ export default function App() {
 
       setHistory((prevHist) => [newHistoryItem, ...prevHist]);
       flashNotification(`Closed ${targetPos.sym} PnL: $${settlePnL.toFixed(2)} [${customReason || 'Manual'}]`);
+
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          type: 'TRADE_CLOSE',
+          positionId: targetPos.id,
+          closePrice: quote,
+          pnl: settlePnL,
+        }, '*');
+      }
 
       return prevPositions.filter((p) => p.id !== id);
     });
