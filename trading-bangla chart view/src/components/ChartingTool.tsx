@@ -1696,13 +1696,25 @@ export default function ChartingTool({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Floating live current tag on right scale plate
+      // Floating live current tag on right scale plate — price + candle-close countdown (TradingView style)
+      const tfMs = parseTimeframeToMinutes(timeframe) * 60 * 1000;
+      const remainSec = Math.floor(Math.max(0, tfMs - (Date.now() % tfMs)) / 1000);
+      const cdH = Math.floor(remainSec / 3600);
+      const cdM = Math.floor((remainSec % 3600) / 60);
+      const cdS = remainSec % 60;
+      const countdown = tfMs >= 3600000
+        ? `${cdH}:${String(cdM).padStart(2, '0')}:${String(cdS).padStart(2, '0')}`
+        : `${String(cdM).padStart(2, '0')}:${String(cdS).padStart(2, '0')}`;
+
       ctx.fillStyle = isUp ? '#26a69a' : '#ef5350';
-      ctx.fillRect(chartW + 1, ly - 9, charLayout.priceW - 2, 18);
+      ctx.fillRect(chartW + 1, ly - 9, charLayout.priceW - 2, 29);
       ctx.fillStyle = '#000000';
       ctx.font = 'bold 10px "DM Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(lastCandle.c.toFixed(pair.dec), chartW + charLayout.priceW / 2, ly + 3.5);
+      ctx.font = '8.5px "DM Mono", monospace';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.fillText(countdown, chartW + charLayout.priceW / 2, ly + 15);
     }
 
     // Dynamic sub-panel Y position helpers (must be before first sub-panel usage)

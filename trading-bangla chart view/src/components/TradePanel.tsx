@@ -383,6 +383,9 @@ export default function TradePanel({
         </div>
       </div>
 
+      {/* FULLY SCROLLABLE BODY — balance, order form, and tabs scroll as one column */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+
       {/* 1. BROKERAGE BALANCES STATUS TABLE */}
       <div className="bg-[#0e1424] p-3 border-b border-[#1b253b] grid grid-cols-2 gap-2 text-xs">
         <div>
@@ -466,7 +469,7 @@ export default function TradePanel({
       )}
 
       {/* 2. ORDER PLACEMENT PANEL */}
-      <div className="bg-[#111625]/50 border-b border-[#1e273d] overflow-y-auto" style={{ flex: '3 1 0', minHeight: 0 }}>
+      <div className="bg-[#111625]/50 border-b border-[#1e273d]">
       <div className="p-3.5 space-y-3">
         <div className="flex bg-gray-900/60 p-1 rounded-lg">
           <button
@@ -662,32 +665,11 @@ export default function TradePanel({
       </div>
       </div>
 
-      {/* PLACE ORDER button — always visible, outside the scrollable form */}
-      <div className="px-3 py-2 shrink-0 bg-[#0d1117] border-b border-[#1e273d]">
-        <button
-          onClick={handlePlaceOrder}
-          className={`w-full py-2.5 rounded-lg font-black font-sans uppercase tracking-widest transition-all active:scale-95 shadow-lg flex flex-col items-center justify-center gap-0.5 ${
-            tradeType === 'BUY'
-              ? 'bg-[#00e676] hover:bg-emerald-400 text-black shadow-[#00e676]/20'
-              : 'bg-[#ff3d57] hover:bg-red-400 text-white shadow-[#ff3d57]/20'
-          }`}
-        >
-          <div className="flex items-center gap-1.5 text-sm">
-            <PlaySquare className="w-4 h-4 shrink-0" />
-            <span>{tradeType === 'BUY' ? '▲ BUY / LONG' : '▼ SELL / SHORT'}</span>
-          </div>
-          <span className="text-[10px] font-mono opacity-75 tracking-widest">
-            @ {currentPrice.toFixed(pair?.dec || 5)} · {lots} lot · 1:{leverage}
-          </span>
-        </button>
-      </div>
-
-
       {/* 3. SIMULATED OPEN POSITIONS & RECENT CLOSED POSITIONS TRACE */}
-      <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0', minHeight: 120 }}>
-        
-        {/* Tab selector */}
-        <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-gray-950/20">
+      <div className="flex flex-col">
+
+        {/* Tab selector — stays pinned while the body scrolls */}
+        <div className="flex border-b border-[#1b253b] text-[10px] uppercase font-bold tracking-wider shrink-0 bg-[#0d1117] sticky top-0 z-10">
           <button
             onClick={() => setActiveTab('positions')}
             className={`flex-1 py-2 border-b-2 flex items-center justify-center gap-1.5 transition ${
@@ -721,10 +703,10 @@ export default function TradePanel({
         </div>
 
         {/* Tab view outcomes */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="p-2">
           {activeTab === 'positions' ? (
             positions.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+              <div className="min-h-[140px] flex flex-col items-center justify-center text-center p-4">
                 <AlertCircle className="w-6 h-6 text-gray-600 mb-1.5" />
                 <span className="text-[10px] text-gray-500 uppercase tracking-widest font-sans font-bold">কোনো ট্রেড ওপেন নেই!</span>
                 <span className="text-[9.5px] text-gray-600 max-w-[150px] mt-1 line-clamp-2">উপরের প্যানেল দিয়ে BUY অথবা SELL ডেমো ট্রেড করুন</span>
@@ -804,7 +786,7 @@ export default function TradePanel({
             )
           ) : activeTab === 'history' ? (
             history.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-4">
+              <div className="min-h-[140px] flex flex-col items-center justify-center text-center p-4">
                 <History className="w-6 h-6 text-gray-600 mb-1.5" />
                 <span className="text-[10px] text-gray-500 uppercase tracking-widest font-sans font-bold text-center">ইতিহাস খালি!</span>
                 <span className="text-[9.5px] text-gray-600 mt-1 max-w-[150px]">কোনো সম্পন্ন লেনদেন পাওয়া যায়নি। পজিশন ক্লোজ করলে সেভ হবে।</span>
@@ -946,6 +928,27 @@ export default function TradePanel({
             </div>
           ) : null}
         </div>
+      </div>
+      </div>
+
+      {/* PLACE ORDER footer — always visible at the bottom of the panel */}
+      <div className="px-3 py-2 shrink-0 bg-[#0d1117] border-t border-[#1e273d]">
+        <button
+          onClick={handlePlaceOrder}
+          className={`w-full py-2.5 rounded-lg font-black font-sans uppercase tracking-widest transition-all active:scale-95 shadow-lg flex flex-col items-center justify-center gap-0.5 ${
+            tradeType === 'BUY'
+              ? 'bg-[#00e676] hover:bg-emerald-400 text-black shadow-[#00e676]/20'
+              : 'bg-[#ff3d57] hover:bg-red-400 text-white shadow-[#ff3d57]/20'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 text-sm">
+            <PlaySquare className="w-4 h-4 shrink-0" />
+            <span>{tradeType === 'BUY' ? '▲ BUY / LONG' : '▼ SELL / SHORT'}</span>
+          </div>
+          <span className="text-[10px] font-mono opacity-75 tracking-widest">
+            @ {currentPrice.toFixed(pair?.dec || 5)} · {lots} lot · 1:{leverage}
+          </span>
+        </button>
       </div>
     </div>
   );
