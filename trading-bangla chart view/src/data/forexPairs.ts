@@ -38,7 +38,7 @@ export const MAJOR_FOREX_PAIRS: Omit<PairConfig, 'sparkline'>[] = [
     label: 'XAU/USD (Gold)',
     bnLabel: 'স্বর্ণ / ইউএস ডলার',
     base: 4060.00,
-    pip: 0.30,
+    pip: 0.80,
     dec: 2,
     spread: 2.5,
   },

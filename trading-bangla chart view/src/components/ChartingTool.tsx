@@ -1239,7 +1239,7 @@ export default function ChartingTool({
       const bW = Math.max(1.5, candleW * 0.75);
 
       const isUp = c.c >= c.o;
-      const col = isUp ? '#00e676' : '#ff3d57';
+      const col = isUp ? '#26a69a' : '#ef5350';
 
       if (chartType === 'line') {
         const nextIdx = idx + 1;
@@ -1660,7 +1660,7 @@ export default function ChartingTool({
       const isUp = lastCandle.c >= lastCandle.o;
 
       // Dashed actual line across entire chart window
-      ctx.strokeStyle = isUp ? '#00e676' : '#ff3d57';
+      ctx.strokeStyle = isUp ? '#26a69a' : '#ef5350';
       ctx.setLineDash([5, 3]);
       ctx.lineWidth = 0.8;
       ctx.beginPath();
@@ -1670,7 +1670,7 @@ export default function ChartingTool({
       ctx.setLineDash([]);
 
       // Floating live current tag on right scale plate
-      ctx.fillStyle = isUp ? '#00e676' : '#ff3d57';
+      ctx.fillStyle = isUp ? '#26a69a' : '#ef5350';
       ctx.fillRect(chartW + 1, ly - 9, charLayout.priceW - 2, 18);
       ctx.fillStyle = '#000000';
       ctx.font = 'bold 10px "DM Mono", monospace';
