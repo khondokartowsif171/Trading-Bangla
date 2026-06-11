@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Component, ReactNode, lazy, Suspense } from 'react';
+import { Component, ReactNode, lazy, Suspense, useEffect } from 'react';
 import { AppProvider, useApp } from '@/context/AppContext';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import LoginModal from '@/components/LoginModal';
 
 // Global error boundary — catches component crashes, shows fallback instead of blank white
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -59,8 +60,19 @@ function PageLoader() {
   );
 }
 
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isLoggedIn, loading, openLoginModal } = useAuth();
+  useEffect(() => {
+    if (!loading && !isLoggedIn) openLoginModal();
+  }, [loading, isLoggedIn, openLoginModal]);
+  if (loading) return <PageLoader />;
+  if (!isLoggedIn) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function AppContent() {
   const { darkMode } = useApp();
+  const { showLoginModal, closeLoginModal } = useAuth();
   const location = useLocation();
   const isHome = location.pathname === '/';
   const isCrmSubdomain = window.location.hostname === 'crm.tradingbangla.com';
@@ -79,20 +91,20 @@ function AppContent() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={isCrmSubdomain ? <Navigate to="/crm" replace /> : <Home />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/trade" element={<Navigate to="/ea-dashboard" replace />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
-              <Route path="/ea-analytics" element={<EAAnalytics />} />
-              <Route path="/ea-dashboard" element={<EaDashboard />} />
-              <Route path="/profile" element={<UserProfile />} />
-              <Route path="/forex" element={<ForexMT5 />} />
-              <Route path="/crytox" element={<AuraCrytox />} />
+              <Route path="/portfolio" element={<ProtectedRoute><PortfolioPage /></ProtectedRoute>} />
+              <Route path="/ea-analytics" element={<ProtectedRoute><EAAnalytics /></ProtectedRoute>} />
+              <Route path="/ea-dashboard" element={<ProtectedRoute><EaDashboard /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+              <Route path="/forex" element={<ProtectedRoute><ForexMT5 /></ProtectedRoute>} />
+              <Route path="/crytox" element={<ProtectedRoute><AuraCrytox /></ProtectedRoute>} />
               <Route path="/tb-admin-2026" element={<AdminDashboard />} />
               <Route path="/crm" element={<CrmDashboard />} />
               <Route path="/admin" element={<Navigate to="/" replace />} />
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/blog/:slug" element={<BlogPost />} />
-              <Route path="/mt5-chart" element={<MT5ChartPage />} />
+              <Route path="/mt5-chart" element={<ProtectedRoute><MT5ChartPage /></ProtectedRoute>} />
             </Routes>
           </Suspense>
         </ErrorBoundary>
@@ -110,6 +122,7 @@ function AppContent() {
           <MobileBottomNav />
         </div>
       )}
+      <LoginModal isOpen={showLoginModal} onClose={closeLoginModal} />
     </div>
   );
 }

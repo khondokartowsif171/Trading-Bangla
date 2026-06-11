@@ -16,6 +16,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +30,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setEmail('');
     setPassword('');
     setName('');
+    setPhone('');
     setConfirmPassword('');
     setError('');
     setSuccess('');
@@ -78,7 +80,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       return;
     }
     setLoading(true);
-    const { error } = await register(email.trim(), password, name.trim());
+    const { error } = await register(email.trim(), password, name.trim(), phone.trim() || undefined);
     setLoading(false);
     if (error) {
       setError(error);
@@ -283,13 +285,23 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                       className="space-y-3.5"
                     >
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Full Name</label>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Full Name · পুরো নাম</label>
                         <input
                           type="text"
                           value={name}
                           onChange={e => { setName(e.target.value); setError(''); }}
                           placeholder="আপনার নাম"
                           required
+                          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Mobile Number · মোবাইল নম্বর</label>
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={e => { setPhone(e.target.value); setError(''); }}
+                          placeholder="+880 1XXX-XXXXXX"
                           className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30 transition-all"
                         />
                       </div>

@@ -1,19 +1,15 @@
-import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { motion } from 'framer-motion';
 import { Lock, LogIn, Radio } from 'lucide-react';
-import LoginModal from '@/components/LoginModal';
 
 export default function EAAnalytics() {
   const { darkMode, lang, t } = useApp();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, openLoginModal } = useAuth();
   const isBn = lang === 'bn';
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
-      <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
 
       {/* ── GUEST GATE ── */}
       {!isLoggedIn && (
@@ -48,7 +44,7 @@ export default function EAAnalytics() {
             </p>
 
             <button
-              onClick={() => setLoginModalOpen(true)}
+              onClick={openLoginModal}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 px-8 py-3 font-bold text-sm text-white hover:from-purple-400 hover:to-purple-600 transition-all shadow-lg shadow-purple-500/20"
             >
               <LogIn className="w-4 h-4" />
