@@ -345,6 +345,14 @@ export default function ChartingTool({
   const [isHolding, setIsHolding] = useState(false);
   const dragStartRef = useRef<{ clientX: number; offset: number } | null>(null);
 
+  // Frozen history cache — regenerated only on pair/TF change, NOT on every tick
+  interface HistoryCache {
+    sym: string;
+    tf: string;
+    path: Candle[];
+  }
+  const historyCache = useRef<HistoryCache | null>(null);
+
   // Touch panning/zooming gesture refs
   const touchStartRef = useRef<{
     clientX: number;
@@ -401,86 +409,106 @@ export default function ChartingTool({
   const aggregatedCandles = useMemo(() => {
     if (candles.length === 0) return [];
 
-    // Parse standard or custom timeframe string into minutes
     const T = parseTimeframeToMinutes(timeframe);
     const intervalMs = T * 60 * 1000;
-
-    // We want up to 10 years of historical data
-    // 10 years = 10 * 365 * 24 * 60 = 5,256,000 minutes
-    const tenYearsMinutes = 10 * 365 * 24 * 60;
-    const rawCount = Math.floor(tenYearsMinutes / T);
-    // Limit to maximum 3000 candles to maintain excellent canvas performance and smooth interaction
-    const count = Math.max(120, Math.min(3000, rawCount));
-
-    const path: Candle[] = [];
+    const liveCandle = candles[candles.length - 1];
     const pip = pair.pip;
     const dec = pair.dec;
 
-    // Get the latest real-time broker live tick price
-    const liveCandle = candles[candles.length - 1];
-    const currentPrice = liveCandle.c;
+    // Compute current period boundary early (needed for needsRegen check)
     const nowRounded = Math.floor(liveCandle.t / intervalMs) * intervalMs;
 
-    // Derive a unique stable character seed for this pair to keep chart wave outlines consistent
-    let charSeed = 0;
-    for (let c = 0; c < pair.sym.length; c++) {
-      charSeed += pair.sym.charCodeAt(c) * (c + 1);
+    // Regenerate frozen history when: pair/TF changes, OR >50 periods elapsed (user was away)
+    const needsRegen =
+      !historyCache.current ||
+      historyCache.current.sym !== pair.sym ||
+      historyCache.current.tf !== timeframe ||
+      (nowRounded - historyCache.current.path[historyCache.current.path.length - 1].t) / intervalMs > 50;
+
+    if (needsRegen) {
+      const anchorPrice = liveCandle.c;
+      const nowRoundedAnchor = nowRounded;
+
+      const tenYearsMinutes = 10 * 365 * 24 * 60;
+      const rawCount = Math.floor(tenYearsMinutes / T);
+      const count = Math.max(120, Math.min(3000, rawCount));
+
+      const genPath: Candle[] = [];
+
+      let charSeed = 0;
+      for (let c = 0; c < pair.sym.length; c++) {
+        charSeed += pair.sym.charCodeAt(c) * (c + 1);
+      }
+
+      const tfScale = Math.sqrt(T);
+      let lastClose = anchorPrice;
+
+      for (let i = 0; i < count; i++) {
+        const candleTime = nowRoundedAnchor - i * intervalMs;
+        const idxSeed = charSeed + i * 37;
+        const isUp = seededRandom(idxSeed) > 0.495;
+        const bodyMultiplier = seededRandom(idxSeed + 1) * 6.5 + 1.2;
+        const wickMultiplier = seededRandom(idxSeed + 2) * 5.0 + 0.5;
+        const bodySize = bodyMultiplier * pip * tfScale;
+        const wickSize = wickMultiplier * pip * tfScale;
+        const c = lastClose;
+        const o = isUp ? lastClose - bodySize : lastClose + bodySize;
+        const h = Math.max(o, c) + wickSize;
+        const l = Math.min(o, c) - wickSize;
+        const v = Math.floor(seededRandom(idxSeed + 3) * 1600 + 150);
+        genPath.push({
+          t: candleTime,
+          o: Number(o.toFixed(dec)),
+          h: Number(h.toFixed(dec)),
+          l: Number(l.toFixed(dec)),
+          c: Number(c.toFixed(dec)),
+          v,
+        });
+        lastClose = o;
+      }
+
+      genPath.reverse();
+      historyCache.current = { sym: pair.sym, tf: timeframe, path: genPath };
     }
 
-    // Accumulator for reverse random walk starting at current live price
-    let lastClose = currentPrice;
+    const cache = historyCache.current!;
 
-    for (let i = 0; i < count; i++) {
-      const candleTime = nowRounded - i * intervalMs;
-
-      // Seed for this specific candle's walk parameters
-      const idxSeed = charSeed + i * 37;
-
-      // Deterministic pseudo-random generation
-      const isUp = seededRandom(idxSeed) > 0.495;
-      
-      // Scaling volatilies based on pair pip values to keep charts looking extremely realistic
-      const bodyMultiplier = (seededRandom(idxSeed + 1) * 6.5 + 1.2); // body size in pips
-      const wickMultiplier = (seededRandom(idxSeed + 2) * 5.0 + 0.5); // wick size in pips
-
-      const bodySize = bodyMultiplier * pip;
-      const wickSize = wickMultiplier * pip;
-
-      const c = lastClose;
-      const o = isUp ? lastClose - bodySize : lastClose + bodySize;
-      const h = Math.max(o, c) + wickSize;
-      const l = Math.min(o, c) - wickSize;
-      const v = Math.floor(seededRandom(idxSeed + 3) * 1600 + 150);
-
-      path.push({
-        t: candleTime,
-        o: Number(o.toFixed(dec)),
-        h: Number(h.toFixed(dec)),
-        l: Number(l.toFixed(dec)),
-        c: Number(c.toFixed(dec)),
-        v: v,
+    // Period rollover: seal old forming candle, append new forming period
+    const cachedLastTime = cache.path[cache.path.length - 1].t;
+    if (nowRounded > cachedLastTime) {
+      // Old forming candle at cache.path[last] already has running H/L from in-place updates
+      cache.path.shift();  // drop oldest historical candle (keep array at fixed size)
+      const newOpen = Number(cache.path[cache.path.length - 1].c.toFixed(dec));
+      cache.path.push({
+        t: nowRounded,
+        o: newOpen,
+        h: Number(Math.max(newOpen, liveCandle.h).toFixed(dec)),
+        l: Number(Math.min(newOpen, liveCandle.l).toFixed(dec)),
+        c: Number(liveCandle.c.toFixed(dec)),
+        v: liveCandle.v,
       });
-
-      // Walk backward (the open of this candle will be the close of the previous older candle)
-      lastClose = o;
     }
 
-    // Since we created history going backwards, reverse it to chronological order (oldest to newest)
-    path.reverse();
+    // Update forming candle IN-PLACE with running H/L on every tick
+    const lastInCache = cache.path[cache.path.length - 1];
+    const formingOpen = Number((cache.path.length > 1
+      ? cache.path[cache.path.length - 2].c
+      : liveCandle.c).toFixed(dec));
 
-    // Overwrite the last candle with live dynamic ticks from parent to connect smoothly
-    if (path.length > 0) {
-      const lastIdx = path.length - 1;
-      path[lastIdx] = {
-        ...path[lastIdx],
-        c: liveCandle.c,
-        h: Math.max(path[lastIdx].h, liveCandle.h),
-        l: Math.min(path[lastIdx].l, liveCandle.l),
-        v: path[lastIdx].v + liveCandle.v,
-      };
-    }
+    // Accumulate running max/min since period start; reset if somehow period doesn't match
+    const prevH = lastInCache.t === nowRounded ? lastInCache.h : formingOpen;
+    const prevL = lastInCache.t === nowRounded ? lastInCache.l : formingOpen;
 
-    return path;
+    cache.path[cache.path.length - 1] = {
+      t: nowRounded,
+      o: formingOpen,
+      h: Number(Math.max(prevH, liveCandle.h, liveCandle.c).toFixed(dec)),
+      l: Number(Math.min(prevL, liveCandle.l, liveCandle.c).toFixed(dec)),
+      c: Number(liveCandle.c.toFixed(dec)),
+      v: liveCandle.v,
+    };
+
+    return [...cache.path];  // new array reference so React re-renders
   }, [candles, timeframe, pair]);
 
   // Derive transformed candle set based on chosen view
@@ -1238,7 +1266,7 @@ export default function ChartingTool({
       const bW = Math.max(1.5, candleW * 0.75);
 
       const isUp = c.c >= c.o;
-      const col = isUp ? '#00e676' : '#ff3d57';
+      const col = isUp ? '#26a69a' : '#ef5350';
 
       if (chartType === 'line') {
         const nextIdx = idx + 1;
@@ -1659,7 +1687,7 @@ export default function ChartingTool({
       const isUp = lastCandle.c >= lastCandle.o;
 
       // Dashed actual line across entire chart window
-      ctx.strokeStyle = isUp ? '#00e676' : '#ff3d57';
+      ctx.strokeStyle = isUp ? '#26a69a' : '#ef5350';
       ctx.setLineDash([5, 3]);
       ctx.lineWidth = 0.8;
       ctx.beginPath();
@@ -1668,13 +1696,25 @@ export default function ChartingTool({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Floating live current tag on right scale plate
-      ctx.fillStyle = isUp ? '#00e676' : '#ff3d57';
-      ctx.fillRect(chartW + 1, ly - 9, charLayout.priceW - 2, 18);
+      // Floating live current tag on right scale plate — price + candle-close countdown (TradingView style)
+      const tfMs = parseTimeframeToMinutes(timeframe) * 60 * 1000;
+      const remainSec = Math.floor(Math.max(0, tfMs - (Date.now() % tfMs)) / 1000);
+      const cdH = Math.floor(remainSec / 3600);
+      const cdM = Math.floor((remainSec % 3600) / 60);
+      const cdS = remainSec % 60;
+      const countdown = tfMs >= 3600000
+        ? `${cdH}:${String(cdM).padStart(2, '0')}:${String(cdS).padStart(2, '0')}`
+        : `${String(cdM).padStart(2, '0')}:${String(cdS).padStart(2, '0')}`;
+
+      ctx.fillStyle = isUp ? '#26a69a' : '#ef5350';
+      ctx.fillRect(chartW + 1, ly - 9, charLayout.priceW - 2, 29);
       ctx.fillStyle = '#000000';
       ctx.font = 'bold 10px "DM Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(lastCandle.c.toFixed(pair.dec), chartW + charLayout.priceW / 2, ly + 3.5);
+      ctx.font = '8.5px "DM Mono", monospace';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.fillText(countdown, chartW + charLayout.priceW / 2, ly + 15);
     }
 
     // Dynamic sub-panel Y position helpers (must be before first sub-panel usage)
