@@ -6,6 +6,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
 }
 
 interface AuthContextType {
@@ -13,8 +14,11 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  showLoginModal: boolean;
+  openLoginModal: () => void;
+  closeLoginModal: () => void;
   login: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
-  register: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
+  register: (email: string, password: string, name: string, phone?: string) => Promise<{ error: string | null }>;
   loginWithGoogle: () => Promise<{ error: string | null }>;
   resendConfirmation: (email: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
@@ -30,13 +34,22 @@ function toUser(supaUser: SupabaseUser): User {
     meta.display_name ??
     supaUser.email?.split('@')[0]?.replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) ??
     'Trader';
-  return { id: supaUser.id, name, email: supaUser.email ?? '' };
+  return {
+    id: supaUser.id,
+    name,
+    email: supaUser.email ?? '',
+    phone: meta.phone ?? '',
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  const openLoginModal = () => setShowLoginModal(true);
+  const closeLoginModal = () => setShowLoginModal(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -48,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ? toUser(session.user) : null);
+      // Auto-close modal on successful auth
+      if (session?.user) setShowLoginModal(false);
     });
 
     return () => subscription.unsubscribe();
@@ -69,11 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const register = async (email: string, password: string, name: string): Promise<{ error: string | null }> => {
+  const register = async (email: string, password: string, name: string, phone?: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: { data: { full_name: name, name, phone: phone ?? '' } },
     });
     if (error) return { error: error.message };
     return { error: null };
@@ -93,7 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn: !!user, user, session, loading, login, register, loginWithGoogle, resendConfirmation, logout }}>
+    <AuthContext.Provider value={{
+      isLoggedIn: !!user, user, session, loading,
+      showLoginModal, openLoginModal, closeLoginModal,
+      login, register, loginWithGoogle, resendConfirmation, logout,
+    }}>
       {children}
     </AuthContext.Provider>
   );

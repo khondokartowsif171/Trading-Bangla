@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Component, ReactNode, lazy, Suspense } from 'react';
+import { Component, ReactNode, lazy, Suspense, useEffect } from 'react';
 import { AppProvider, useApp } from '@/context/AppContext';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 // Global error boundary — catches component crashes, shows fallback instead of blank white
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -30,6 +30,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 
 // Eagerly loaded — critical path pages (home, nav, ticker)
+import LoginModal from '@/components/LoginModal';
 import Navbar from '@/components/Navbar';
 import LivePriceTicker from '@/components/LivePriceTicker';
 import MobileBottomNav from '@/components/MobileBottomNav';
@@ -51,6 +52,26 @@ const BlogPage = lazy(() => import('@/pages/BlogPage'));
 const BlogPost = lazy(() => import('@/pages/BlogPost'));
 const MT5ChartPage = lazy(() => import('@/pages/MT5ChartPage'));
 
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isLoggedIn, loading, openLoginModal } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !isLoggedIn) openLoginModal();
+  }, [loading, isLoggedIn, openLoginModal]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-yellow-500/30 border-t-yellow-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) return <Navigate to="/" replace />;
+
+  return <>{children}</>;
+}
+
 function PageLoader() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -61,6 +82,7 @@ function PageLoader() {
 
 function AppContent() {
   const { darkMode } = useApp();
+  const { showLoginModal, closeLoginModal } = useAuth();
   const location = useLocation();
   const isHome = location.pathname === '/';
   const isCrmSubdomain = window.location.hostname === 'crm.tradingbangla.com';
@@ -79,20 +101,20 @@ function AppContent() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={isCrmSubdomain ? <Navigate to="/crm" replace /> : <Home />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/trade" element={<Navigate to="/ea-dashboard" replace />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
-              <Route path="/ea-analytics" element={<EAAnalytics />} />
-              <Route path="/ea-dashboard" element={<EaDashboard />} />
-              <Route path="/profile" element={<UserProfile />} />
-              <Route path="/forex" element={<ForexMT5 />} />
-              <Route path="/crytox" element={<AuraCrytox />} />
+              <Route path="/portfolio" element={<ProtectedRoute><PortfolioPage /></ProtectedRoute>} />
+              <Route path="/ea-analytics" element={<ProtectedRoute><EAAnalytics /></ProtectedRoute>} />
+              <Route path="/ea-dashboard" element={<ProtectedRoute><EaDashboard /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+              <Route path="/forex" element={<ProtectedRoute><ForexMT5 /></ProtectedRoute>} />
+              <Route path="/crytox" element={<ProtectedRoute><AuraCrytox /></ProtectedRoute>} />
               <Route path="/tb-admin-2026" element={<AdminDashboard />} />
               <Route path="/crm" element={<CrmDashboard />} />
               <Route path="/admin" element={<Navigate to="/" replace />} />
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/blog/:slug" element={<BlogPost />} />
-              <Route path="/mt5-chart" element={<MT5ChartPage />} />
+              <Route path="/mt5-chart" element={<ProtectedRoute><MT5ChartPage /></ProtectedRoute>} />
             </Routes>
           </Suspense>
         </ErrorBoundary>
@@ -110,6 +132,9 @@ function AppContent() {
           <MobileBottomNav />
         </div>
       )}
+
+      {/* Global auth modal */}
+      <LoginModal isOpen={showLoginModal} onClose={closeLoginModal} />
     </div>
   );
 }

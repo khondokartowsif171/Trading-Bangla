@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import AnimatedBackground from '@/components/AnimatedBackground';
 import { TrendingUp, Shield, Zap, Globe, BarChart3, ArrowRight, CheckCircle, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -34,6 +35,7 @@ const features = [
 
 export default function Home() {
   const { darkMode, t, lang } = useApp();
+  const { isLoggedIn, openLoginModal } = useAuth();
   const [typedText, setTypedText] = useState('');
   const fullText = lang === 'bn' ? 'বাংলাদেশের প্রিমিয়ার ট্রেডিং প্ল্যাটফর্ম' : "Bangladesh's Premier Trading Platform";
 
@@ -107,13 +109,35 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Link
-              to="/forex"
-              className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/40 flex items-center gap-2"
-            >
-              {t('startTrading')}
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {isLoggedIn ? (
+              <Link
+                to="/forex"
+                className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold hover:from-yellow-400 hover:to-amber-400 transition-all shadow-lg shadow-yellow-500/25 flex items-center gap-2"
+              >
+                {t('startTrading')}
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <>
+                <button
+                  onClick={openLoginModal}
+                  className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold hover:from-yellow-400 hover:to-amber-400 transition-all shadow-lg shadow-yellow-500/25 flex items-center gap-2"
+                >
+                  বিনামূল্যে নিবন্ধন করুন · Register Free
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={openLoginModal}
+                  className={`px-8 py-3.5 rounded-xl border font-semibold transition-all ${
+                    darkMode
+                      ? 'border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10'
+                      : 'border-yellow-500 text-yellow-600 hover:bg-yellow-50'
+                  }`}
+                >
+                  লগইন · Login
+                </button>
+              </>
+            )}
             <a
               href="#features"
               className={`px-8 py-3.5 rounded-xl border font-semibold transition-all ${
@@ -213,12 +237,21 @@ export default function Home() {
                   : 'Open a free demo account and start trading with $100,000 in virtual funds. No risk, all reward.'}
               </p>
               <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link
-                  to="/forex"
-                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold hover:from-indigo-500 hover:to-purple-500 transition-all"
-                >
-                  {t('startTrading')}
-                </Link>
+                {isLoggedIn ? (
+                  <Link
+                    to="/forex"
+                    className="px-8 py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold hover:from-yellow-400 hover:to-amber-400 transition-all"
+                  >
+                    {t('startTrading')}
+                  </Link>
+                ) : (
+                  <button
+                    onClick={openLoginModal}
+                    className="px-8 py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold hover:from-yellow-400 hover:to-amber-400 transition-all"
+                  >
+                    {t('startTrading')}
+                  </button>
+                )}
                 <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <CheckCircle className="w-4 h-4 text-green-500" />
                   No credit card required
@@ -297,6 +330,18 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Mobile fixed-bottom CTA — shown only when logged out */}
+      {!isLoggedIn && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4 bg-gray-950/95 backdrop-blur-md border-t border-yellow-500/20 md:hidden">
+          <button
+            onClick={openLoginModal}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 font-bold text-sm"
+          >
+            নিবন্ধন / লগইন করুন · Register / Login
+          </button>
+        </div>
+      )}
     </div>
   );
 }
