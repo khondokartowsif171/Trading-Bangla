@@ -287,28 +287,44 @@ export default function App() {
       const now = Date.now();
       const M1_MS = 60000;
 
+      // Only active chart pairs need the full sparkline update (candle spawning, etc.)
+      // Watchlist-only pairs get a lightweight last-candle price update
+      const activeChartSyms = new Set([
+        panel1SelectedSym, panel2SelectedSym, panel3SelectedSym, panel4SelectedSym,
+      ].filter(Boolean));
+
       setPairsMap((prevMap) => {
         const nextMap: Record<string, PairConfig> = {};
 
         Object.keys(prevMap).forEach((symbolKey) => {
           const config = prevMap[symbolKey];
-          const list = [...config.sparkline];
-          let newest = { ...list[list.length - 1] };
 
           // Determine if live price is fresh (within 30s)
           const livePx = liveRef.current[symbolKey];
           const liveAge = now - (liveTimestampRef.current[symbolKey] ?? 0);
           const isLiveFresh = livePx !== undefined && liveAge < 30000;
+          const updatedClose = isLiveFresh
+            ? livePx
+            : Number((config.sparkline[config.sparkline.length - 1].c + (Math.random() - 0.5) * config.pip * 0.3).toFixed(config.dec));
 
-          // Real price when live and fresh; gentle simulation otherwise (keeps chart alive for demo trading)
-          let updatedClose: number;
-          if (isLiveFresh) {
-            updatedClose = livePx;
-          } else {
-            updatedClose = Number((newest.c + (Math.random() - 0.5) * config.pip * 0.3).toFixed(config.dec));
+          if (!activeChartSyms.has(symbolKey)) {
+            // Watchlist-only pair: update only the last candle's close price (no array clone, no candle spawn)
+            const sparkline = config.sparkline;
+            const lastIdx = sparkline.length - 1;
+            if (updatedClose === sparkline[lastIdx].c) {
+              nextMap[symbolKey] = config; // price unchanged — reuse exact reference
+            } else {
+              const newSparkline = sparkline.slice();
+              newSparkline[lastIdx] = { ...sparkline[lastIdx], c: updatedClose, t: now };
+              nextMap[symbolKey] = { ...config, sparkline: newSparkline };
+            }
+            return;
           }
 
-          // ALWAYS seal at real clock-minute boundary — all timeframes (M1/M5/H1/H4/D1) always work
+          // Active chart pair: full update with candle-spawning logic
+          const list = [...config.sparkline];
+          let newest = { ...list[list.length - 1] };
+
           const currentPeriod = Math.floor(now / M1_MS) * M1_MS;
           const newestPeriod = Math.floor(newest.t / M1_MS) * M1_MS;
           const shouldSpawnNewCandle = currentPeriod > newestPeriod;
@@ -320,7 +336,6 @@ export default function App() {
           newest.v += Math.floor(Math.random() * 8 + 1);
 
           if (shouldSpawnNewCandle) {
-            // Seal previous and spawn new M1 candle at the real period boundary
             list.push({
               t: currentPeriod,
               o: updatedClose,
@@ -329,18 +344,12 @@ export default function App() {
               c: updatedClose,
               v: Math.floor(Math.random() * 200 + 30),
             });
-            // Keep window size aligned
-            if (list.length > 1200) {
-              list.shift();
-            }
+            if (list.length > 1200) list.shift();
           } else {
             list[list.length - 1] = newest;
           }
 
-          nextMap[symbolKey] = {
-            ...config,
-            sparkline: list,
-          };
+          nextMap[symbolKey] = { ...config, sparkline: list };
         });
 
         return nextMap;

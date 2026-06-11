@@ -431,7 +431,7 @@ export default function ChartingTool({
 
       const tenYearsMinutes = 10 * 365 * 24 * 60;
       const rawCount = Math.floor(tenYearsMinutes / T);
-      const count = Math.max(120, Math.min(3000, rawCount));
+      const count = Math.max(120, Math.min(500, rawCount));
 
       const genPath: Candle[] = [];
 
@@ -509,7 +509,7 @@ export default function ChartingTool({
     };
 
     return [...cache.path];  // new array reference so React re-renders
-  }, [candles, timeframe, pair]);
+  }, [candles, timeframe, pair.sym, pair.pip, pair.dec]);
 
   // Derive transformed candle set based on chosen view
   const processedCandles = useMemo(() => {
