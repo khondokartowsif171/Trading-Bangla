@@ -69,13 +69,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const register = async (email: string, password: string, name: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signUp({
+  const register = async (email: string, password: string, name: string, phone?: string): Promise<{ error: string | null }> => {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: { data: { full_name: name, name, phone: phone ?? '' } },
     });
     if (error) return { error: error.message };
+    if (data.user) {
+      await supabase.from('profiles').upsert(
+        { id: data.user.id, full_name: name, email, phone: phone ?? '', role: 'member' },
+        { onConflict: 'id' }
+      );
+    }
     return { error: null };
   };
 

@@ -21,7 +21,8 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointEleme
 type Tab = 'overview' | 'users' | 'signals' | 'blog' | 'eastats' | 'settings';
 type BlogView = 'list' | 'editor';
 
-interface Profile { id: string; full_name: string; role: string; created_at: string; }
+interface Profile { id: string; full_name: string; email?: string; phone?: string; role: string; created_at: string; }
+interface DemoTrade { id: string; symbol: string; type: string; entry_price: number; exit_price: number | null; lot_size: number; pnl: number; status: string; opened_at: string; closed_at: string | null; }
 interface Signal { id: string; symbol: string; signal: 'BUY' | 'SELL' | 'NEUTRAL'; confidence: number; price: number; sl: number; tp: number; timeframe: string; source: string; created_at: string; }
 interface EaStat { id: string; date: string; total_signals: number; buy_signals: number; sell_signals: number; avg_confidence: number; win_rate: number; total_pnl: number; updated_at: string; }
 interface OverviewStats { totalUsers: number; totalSignals: number; totalTrades: number; winRate: number | null; }
@@ -64,6 +65,8 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState('');
   const [userTradeCounts, setUserTradeCounts] = useState<Record<string, number>>({});
   const [usersLoading, setUsersLoading] = useState(false);
+  const [tradeModal, setTradeModal] = useState<{ user: Profile; trades: DemoTrade[] } | null>(null);
+  const [tradeModalLoading, setTradeModalLoading] = useState(false);
 
   // Signals
   const [allSignals, setAllSignals] = useState<Signal[]>([]);
@@ -127,7 +130,7 @@ export default function AdminDashboard() {
       supabase.from('demo_trades').select('id', { count: 'exact', head: true }),
       supabase.from('ea_stats').select('win_rate').order('date', { ascending: false }).limit(1).single(),
       supabase.from('signals').select('*').order('created_at', { ascending: false }).limit(8),
-      supabase.from('profiles').select('id, full_name, role, created_at').order('created_at', { ascending: false }).limit(8),
+      supabase.from('profiles').select('id, full_name, email, phone, role, created_at').order('created_at', { ascending: false }).limit(8),
       supabase.from('ea_stats').select('date, total_signals, win_rate').order('date', { ascending: false }).limit(30),
     ]);
     setOverviewStats({ totalUsers: usersRes.count ?? 0, totalSignals: signalsRes.count ?? 0, totalTrades: tradesRes.count ?? 0, winRate: winRateRes.data?.win_rate ?? null });
@@ -139,7 +142,7 @@ export default function AdminDashboard() {
 
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
-    const { data } = await supabase.from('profiles').select('id, full_name, role, created_at').order('created_at', { ascending: false });
+    const { data } = await supabase.from('profiles').select('id, full_name, email, phone, role, created_at').order('created_at', { ascending: false });
     const users = (data as Profile[]) ?? [];
     setAllUsers(users);
     if (users.length > 0) {
@@ -270,8 +273,20 @@ export default function AdminDashboard() {
   const textPrimary = darkMode ? 'text-white' : 'text-gray-900';
   const textMuted = darkMode ? 'text-gray-400' : 'text-gray-500';
   const inputCls = `w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500/50 ${darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`;
-  const filteredUsers = allUsers.filter(u => !userSearch || u.full_name?.toLowerCase().includes(userSearch.toLowerCase()));
+  const filteredUsers = allUsers.filter(u => !userSearch || [u.full_name, u.email, u.phone].some(f => f?.toLowerCase().includes(userSearch.toLowerCase())));
   const filteredSignals = signalFilter ? allSignals.filter(s => s.signal === signalFilter) : allSignals;
+
+  const viewUserTrades = async (u: Profile) => {
+    setTradeModalLoading(true);
+    setTradeModal({ user: u, trades: [] });
+    const { data } = await supabase.from('demo_trades')
+      .select('id, symbol, type, entry_price, exit_price, lot_size, pnl, status, opened_at, closed_at')
+      .eq('user_id', u.id)
+      .order('opened_at', { ascending: false })
+      .limit(100);
+    setTradeModal({ user: u, trades: (data as DemoTrade[]) ?? [] });
+    setTradeModalLoading(false);
+  };
 
   const navItems: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -511,20 +526,26 @@ export default function AdminDashboard() {
               </div>
               {usersLoading ? <Spinner /> : (
                 <div className={`rounded-xl overflow-hidden border ${cardBg}`}>
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[760px]">
                     <thead><tr className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
-                      {['User', 'Role', 'Trades', 'Joined'].map(h => <th key={h} className={`px-4 py-3 text-left text-xs uppercase tracking-wider font-medium ${textMuted}`}>{h}</th>)}
+                      {['User', 'Email', 'Mobile', 'Role', 'Trades', 'Joined'].map(h => <th key={h} className={`px-4 py-3 text-left text-xs uppercase tracking-wider font-medium ${textMuted}`}>{h}</th>)}
                     </tr></thead>
                     <tbody>
-                      {filteredUsers.length === 0 ? <tr><td colSpan={4} className={`px-4 py-8 text-center text-xs ${textMuted}`}>No users found</td></tr>
+                      {filteredUsers.length === 0 ? <tr><td colSpan={6} className={`px-4 py-8 text-center text-xs ${textMuted}`}>No users found</td></tr>
                         : filteredUsers.map(u => (
                           <tr key={u.id} className={`border-b transition-colors ${darkMode ? 'border-gray-800/50 hover:bg-gray-800/30' : 'border-gray-100 hover:bg-gray-50'}`}>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center text-gray-900 text-xs font-bold shrink-0">{u.full_name?.charAt(0)?.toUpperCase() ?? '?'}</div>
-                                <span className={`font-medium ${textPrimary}`}>{u.full_name ?? 'Unknown'}</span>
+                                <div>
+                                  <p className={`font-medium ${textPrimary}`}>{u.full_name ?? 'Unknown'}</p>
+                                  <p className={`text-[10px] font-mono ${textMuted}`}>{u.id.slice(0, 8)}…</p>
+                                </div>
                               </div>
                             </td>
+                            <td className={`px-4 py-3 text-xs ${textMuted} max-w-[160px] truncate`}>{u.email ?? '—'}</td>
+                            <td className={`px-4 py-3 text-xs ${textMuted}`}>{u.phone || '—'}</td>
                             <td className="px-4 py-3">
                               <select value={u.role} onChange={e => changeRole(u.id, e.target.value)}
                                 className={`text-xs rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
@@ -532,11 +553,17 @@ export default function AdminDashboard() {
                                 <option value="admin">admin</option>
                               </select>
                             </td>
-                            <td className={`px-4 py-3 text-xs ${textMuted}`}>{userTradeCounts[u.id] ?? 0}</td>
+                            <td className="px-4 py-3">
+                              <button onClick={() => viewUserTrades(u)}
+                                className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${(userTradeCounts[u.id] ?? 0) > 0 ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20' : `border-gray-700 ${textMuted} hover:border-gray-500`}`}>
+                                {userTradeCounts[u.id] ?? 0} trades
+                              </button>
+                            </td>
                             <td className={`px-4 py-3 text-xs ${textMuted}`}>{formatDate(u.created_at)}</td>
                           </tr>))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -864,6 +891,61 @@ export default function AdminDashboard() {
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-2xl text-sm font-medium ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <X className="w-4 h-4" />}
           {toast.msg}
+        </div>
+      )}
+
+      {/* Trade History Modal */}
+      {tradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setTradeModal(null)}>
+          <div className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}
+            onClick={e => e.stopPropagation()}>
+            <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+              <div>
+                <h3 className={`font-bold text-base ${textPrimary}`}>{tradeModal.user.full_name ?? 'User'} — Trade History</h3>
+                <p className={`text-xs ${textMuted}`}>{tradeModal.user.email ?? tradeModal.user.id.slice(0, 16)}</p>
+              </div>
+              <button onClick={() => setTradeModal(null)} className={`p-1.5 rounded-lg hover:bg-gray-700/50 transition-colors ${textMuted}`}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh]">
+              {tradeModalLoading ? (
+                <div className="py-12 flex justify-center">
+                  <div className="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : tradeModal.trades.length === 0 ? (
+                <p className={`py-12 text-center text-sm ${textMuted}`}>এই user এর কোনো trade নেই</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead><tr className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
+                    {['Symbol', 'Type', 'Lots', 'Entry', 'Exit', 'P&L', 'Status', 'Date'].map(h =>
+                      <th key={h} className={`px-3 py-2.5 text-left text-xs uppercase tracking-wider font-medium ${textMuted}`}>{h}</th>
+                    )}
+                  </tr></thead>
+                  <tbody>
+                    {tradeModal.trades.map(t => (
+                      <tr key={t.id} className={`border-b ${darkMode ? 'border-gray-800/50' : 'border-gray-100'}`}>
+                        <td className={`px-3 py-2.5 font-medium text-xs ${textPrimary}`}>{t.symbol}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${t.type === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{t.type}</span>
+                        </td>
+                        <td className={`px-3 py-2.5 text-xs ${textMuted}`}>{t.lot_size ?? '—'}</td>
+                        <td className={`px-3 py-2.5 text-xs ${textMuted}`}>{t.entry_price?.toFixed(5) ?? '—'}</td>
+                        <td className={`px-3 py-2.5 text-xs ${textMuted}`}>{t.exit_price?.toFixed(5) ?? '—'}</td>
+                        <td className={`px-3 py-2.5 text-xs font-semibold ${(t.pnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(t.pnl ?? 0) >= 0 ? '+' : ''}{(t.pnl ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${t.status === 'open' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-600/40 text-gray-400'}`}>{t.status}</span>
+                        </td>
+                        <td className={`px-3 py-2.5 text-[10px] ${textMuted}`}>{new Date(t.opened_at).toLocaleDateString('en-GB')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
