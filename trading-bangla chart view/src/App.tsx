@@ -14,7 +14,7 @@ import {
 } from './types';
 import { MAJOR_FOREX_PAIRS } from './data/forexPairs';
 import WatchList from './components/WatchList';
-import ChartingTool from './components/ChartingTool';
+import TradingViewChart from './components/TradingViewChart';
 import TradePanel from './components/TradePanel';
 import AiAnalyst from './components/AiAnalyst';
 import NewsFeed from './components/NewsFeed';
@@ -842,7 +842,7 @@ export default function App() {
                 {/* Layout split screens */}
                 {activeLayout === '1-chart' && (
                   <div className="flex-1 flex flex-col min-h-0 relative">
-                    <ChartingTool
+                    <TradingViewChart
                       pair={pairsMap[panel1SelectedSym]}
                       candles={pairsMap[panel1SelectedSym]?.sparkline || []}
                       timeframe={panel1TF}
@@ -874,7 +874,7 @@ export default function App() {
                           SMC OB
                         </button>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel1SelectedSym]}
                         candles={pairsMap[panel1SelectedSym]?.sparkline || []}
                         timeframe={panel1TF}
@@ -903,7 +903,7 @@ export default function App() {
                           SMC OB
                         </button>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel2SelectedSym]}
                         candles={pairsMap[panel2SelectedSym]?.sparkline || []}
                         timeframe={panel2TF}
@@ -926,7 +926,7 @@ export default function App() {
                           {pairsList.map((item) => <option key={item.sym} value={item.sym}>{item.label}</option>)}
                         </select>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel1SelectedSym]}
                         candles={pairsMap[panel1SelectedSym]?.sparkline || []}
                         timeframe={panel1TF}
@@ -945,7 +945,7 @@ export default function App() {
                           {pairsList.map((item) => <option key={item.sym} value={item.sym}>{item.label}</option>)}
                         </select>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel2SelectedSym]}
                         candles={pairsMap[panel2SelectedSym]?.sparkline || []}
                         timeframe={panel2TF}
@@ -964,7 +964,7 @@ export default function App() {
                           {pairsList.map((item) => <option key={item.sym} value={item.sym}>{item.label}</option>)}
                         </select>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel3SelectedSym]}
                         candles={pairsMap[panel3SelectedSym]?.sparkline || []}
                         timeframe={panel3TF}
@@ -983,7 +983,7 @@ export default function App() {
                           {pairsList.map((item) => <option key={item.sym} value={item.sym}>{item.label}</option>)}
                         </select>
                       </div>
-                      <ChartingTool
+                      <TradingViewChart
                         pair={pairsMap[panel4SelectedSym]}
                         candles={pairsMap[panel4SelectedSym]?.sparkline || []}
                         timeframe={panel4TF}
