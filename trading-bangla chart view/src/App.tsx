@@ -81,6 +81,8 @@ export default function App() {
   // Tracks when each symbol's price was last updated — used to detect market-closed state
   const liveTimestampRef = useRef<Record<string, number>>({});
   const [isAnyLive, setIsAnyLive] = useState(false);
+  // One-time reseed guard — each pair is reseeded from live price once per session
+  const reseededRef = useRef(new Set<string>());
 
   // 1. DYNAMIC ASSET SEED SEEDS
   const [pairsMap, setPairsMap] = useState<Record<string, PairConfig>>(() => {
@@ -299,6 +301,16 @@ export default function App() {
           const livePx = liveRef.current[symbolKey];
           const liveAge = now - (liveTimestampRef.current[symbolKey] ?? 0);
           const isLiveFresh = livePx !== undefined && liveAge < 30000;
+
+          // One-time reseed: if live price arrives and differs from seed endpoint by >0.5%, rebuild history
+          if (isLiveFresh && !reseededRef.current.has(symbolKey)) {
+            reseededRef.current.add(symbolKey);
+            const seedEnd = list[list.length - 1]?.c ?? livePx;
+            if (Math.abs(livePx - seedEnd) / seedEnd > 0.005) {
+              nextMap[symbolKey] = { ...config, sparkline: seedCandles(livePx, 1000, config.pip) };
+              return; // skip normal tick this cycle; next cycle uses fresh candles
+            }
+          }
 
           // Real price when live and fresh; gentle simulation otherwise (keeps chart alive for demo trading)
           let updatedClose: number;
