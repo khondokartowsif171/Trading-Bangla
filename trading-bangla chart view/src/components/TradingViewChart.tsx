@@ -119,27 +119,29 @@ function aggregateCandles(candles: Candle[], tfMin: number): Candle[] {
 }
 
 // ── Synthetic TF-level history for higher timeframes ──────────────────────
+// Builds backwards from lastPrice so newest bar closes at the live price.
+// Returns ascending time order (oldest first) as required by lightweight-charts.
 function generateTFHistory(lastPrice: number, pip: number, count: number, tfMin: number): Candle[] {
-  const out: Candle[] = [];
+  const rev: Candle[] = [];
   let price = lastPrice;
   const msPerBar = tfMin * 60 * 1000;
   const now = Date.now();
-  const volFactor = tfMin <= 15 ? 1 : tfMin <= 60 ? 3 : tfMin <= 240 ? 8 : 20;
-  for (let i = count - 1; i >= 0; i--) {
+  const vf = tfMin <= 15 ? 1 : tfMin <= 60 ? 3 : tfMin <= 240 ? 8 : 20;
+  for (let i = 0; i < count; i++) {         // i=0 → newest bar, i=count-1 → oldest
     const isUp = Math.random() > 0.49;
-    const body = (Math.random() * 3 + 0.5) * volFactor * pip;
-    const wick = (Math.random() * 2 + 0.3) * volFactor * pip;
-    const op = price;
-    const cl = isUp ? price + body : price - body;
-    out.unshift({
+    const body = (Math.random() * 3 + 0.5) * vf * pip;
+    const wick = (Math.random() * 2 + 0.3) * vf * pip;
+    const cl = price;                        // close = current traversal price
+    const op = isUp ? price - body : price + body;
+    rev.push({
       t: now - i * msPerBar,
       o: +op.toFixed(5), h: +(Math.max(op, cl) + wick).toFixed(5),
       l: +(Math.min(op, cl) - wick).toFixed(5), c: +cl.toFixed(5),
-      v: Math.floor(Math.random() * 1400 + 200),
+      v: Math.floor(Math.random() * 10000 + 1000),
     });
-    price = cl;
+    price = op;
   }
-  return out;
+  return rev.reverse(); // ascending: oldest first, newest last (close === lastPrice)
 }
 
 // ── Lightweight-charts data helpers ────────────────────────────────────────
@@ -183,7 +185,6 @@ function drawSMCOverlay(
 
   if (tog.ob) {
     smc.orderBlocks.forEach(ob => {
-      if (ob.mitigated) return;
       const sc = agg[Math.min(ob.startIndex, agg.length-1)];
       const x0 = tX(sc.t); const x1 = nowX;
       const y0 = pY(ob.high); const y1 = pY(ob.low);
@@ -202,7 +203,6 @@ function drawSMCOverlay(
 
   if (tog.fvg) {
     smc.fvgZones.forEach(fvg => {
-      if (fvg.filled) return;
       const sc = agg[Math.min(fvg.startIndex, agg.length-1)];
       const x0 = tX(sc.t); const x1 = nowX;
       const y0 = pY(fvg.top); const y1 = pY(fvg.bottom);
@@ -241,7 +241,6 @@ function drawSMCOverlay(
 
   if (tog.liq) {
     smc.liquidityLevels.forEach(liq => {
-      if (liq.swept) return;
       const y = pY(liq.price); if (y===null) return;
       ctx.strokeStyle = 'rgba(251,191,36,0.7)';
       ctx.lineWidth=1; ctx.setLineDash([2,4]);
@@ -254,7 +253,6 @@ function drawSMCOverlay(
 
   if (tog.sr) {
     smc.srLevels.forEach(sr => {
-      if (sr.broken) return;
       const y = pY(sr.price); if (y===null) return;
       ctx.strokeStyle = sr.type==='support' ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,113,0.7)';
       ctx.lineWidth = 1 + Math.min(sr.strength-1, 2)*0.5;
@@ -267,7 +265,6 @@ function drawSMCOverlay(
 
   if (tog.sd) {
     smc.sdZones.forEach(sd => {
-      if (sd.tested) return;
       const y0 = pY(sd.high); const y1 = pY(sd.low);
       if (y0===null||y1===null) return;
       const top = Math.min(y0,y1); const ht = Math.abs(y1-y0);
@@ -383,6 +380,9 @@ interface Props {
   onClose?: () => void;
 }
 
+// Synthetic history cache — persists across ticks, only regenerated on TF/pair change
+const syntheticCache = { key: '', bars: [] as Candle[] };
+
 // ── Main component ──────────────────────────────────────────────────────────
 export default function TradingViewChart({
   pair, candles, timeframe, onTimeframeChange, showSMC = false, onClose,
@@ -394,6 +394,8 @@ export default function TradingViewChart({
   const candleRef    = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null);
   const indRef       = useRef<Map<string, ISeriesApi<SeriesType>[]>>(new Map());
+  const volDataRef   = useRef<{ time: UTCTimestamp; value: number; color: string }[]>([]);
+  const showVolRef   = useRef(true); // shadows showVol for use inside effects without dep
 
   // Indicator state
   const [activeOvl,  setActiveOvl]  = useState<Set<string>>(new Set<string>());
@@ -419,15 +421,29 @@ export default function TradingViewChart({
   const prevTfRef   = useRef('');
   const prevLenRef  = useRef(0);
 
-  // Timeframe aggregation — fall back to synthetic TF history when M1 seed is too sparse
+  // Timeframe aggregation — fall back to stable synthetic TF history when M1 seed is too sparse
   const tfMin     = useMemo(() => parseTimeframeToMinutes(timeframe), [timeframe]);
   const aggregated = useMemo(() => {
     const agg = aggregateCandles(candles, tfMin);
-    if (agg.length < 100 && tfMin > 1 && pair) {
-      const lastPrice = candles.length > 0 ? candles[candles.length - 1].c : pair.base;
-      return generateTFHistory(lastPrice, pair.pip, 200, tfMin);
+    if (agg.length >= 100 || tfMin <= 1 || !pair) return agg;
+
+    const lastPrice = candles.length > 0 ? candles[candles.length - 1].c : pair.base;
+    const cacheKey  = `${pair.sym}-${tfMin}`;
+
+    // Regenerate ONLY when TF or pair changes — not every 500ms tick
+    if (syntheticCache.key !== cacheKey) {
+      syntheticCache.key  = cacheKey;
+      syntheticCache.bars = generateTFHistory(lastPrice, pair.pip, 200, tfMin);
     }
-    return agg;
+
+    // Update last bar: stable TF-period boundary timestamp + live close price
+    const msPerBar = tfMin * 60 * 1000;
+    const periodT  = Math.floor(Date.now() / msPerBar) * msPerBar;
+    const base     = syntheticCache.bars;
+    const last     = { ...base[base.length - 1], t: periodT, c: lastPrice };
+    last.h = Math.max(last.h, lastPrice);
+    last.l = Math.min(last.l, lastPrice);
+    return [...base.slice(0, -1), last];
   }, [candles, tfMin, pair]);
 
   // SMC data (last 200 bars)
@@ -649,7 +665,9 @@ export default function TradingViewChart({
     const lwVol     = agg.map(c => ({ time: Math.floor(c.t/1000) as UTCTimestamp, value:c.v, color:c.c>=c.o?'rgba(38,166,154,0.4)':'rgba(239,83,80,0.4)' }));
 
     if (needFull) {
-      cs.setData(lwCandles); vs.setData(lwVol);
+      cs.setData(lwCandles);
+      volDataRef.current = lwVol;
+      vs.setData(showVolRef.current ? lwVol : []);
       rebuildIndicators();
       chart.timeScale().scrollToRealTime();
       chart.applyOptions({ watermark: { visible:true, fontSize:26, horzAlign:'left', vertAlign:'top', color:'rgba(255,255,255,0.05)', text:`${pair?.sym??''} · ${timeframe}` } } as Parameters<typeof chart.applyOptions>[0]);
@@ -657,17 +675,22 @@ export default function TradingViewChart({
     } else {
       const last = agg[agg.length-1];
       const t = Math.floor(last.t/1000) as UTCTimestamp;
+      const volPt = { time:t, value:last.v, color:last.c>=last.o?'rgba(38,166,154,0.4)':'rgba(239,83,80,0.4)' };
       cs.update({ time:t, open:last.o, high:last.h, low:last.l, close:last.c });
-      vs.update({ time:t, value:last.v, color:last.c>=last.o?'rgba(38,166,154,0.4)':'rgba(239,83,80,0.4)' });
+      if (volDataRef.current.length > 0) volDataRef.current[volDataRef.current.length-1] = volPt;
+      if (showVolRef.current) vs.update(volPt);
     }
   }, [aggregated, pair?.sym, timeframe, rebuildIndicators]);
 
   // Rebuild when indicator selection changes
   useEffect(() => { rebuildIndicators(); }, [activeOvl, activeSub, rebuildIndicators]);
 
-  // Volume visibility toggle
+  // Volume visibility toggle — uses setData([]) / setData(full) instead of priceScale visibility
   useEffect(() => {
-    chartRef.current?.priceScale('vol').applyOptions({ visible: showVol });
+    showVolRef.current = showVol;
+    const vs = volRef.current; if (!vs) return;
+    if (showVol && volDataRef.current.length > 0) vs.setData(volDataRef.current);
+    else vs.setData([]);
   }, [showVol]);
 
   // ── Canvas redraw ──────────────────────────────────────────────────────
