@@ -126,11 +126,11 @@ function generateTFHistory(lastPrice: number, pip: number, count: number, tfMin:
   let price = lastPrice;
   const msPerBar = tfMin * 60 * 1000;
   const now = Date.now();
-  const vf = tfMin <= 15 ? 1 : tfMin <= 60 ? 3 : tfMin <= 240 ? 8 : 20;
+  const pct = tfMin <= 15 ? 0.0005 : tfMin <= 60 ? 0.0012 : tfMin <= 240 ? 0.003 : 0.007;
   for (let i = 0; i < count; i++) {         // i=0 → newest bar, i=count-1 → oldest
     const isUp = Math.random() > 0.49;
-    const body = (Math.random() * 3 + 0.5) * vf * pip;
-    const wick = (Math.random() * 2 + 0.3) * vf * pip;
+    const body = (Math.random() * 0.6 + 0.4) * pct * Math.abs(price);
+    const wick = (Math.random() * 0.4 + 0.1) * pct * Math.abs(price);
     const cl = price;                        // close = current traversal price
     const op = isUp ? price - body : price + body;
     rev.push({
@@ -380,9 +380,6 @@ interface Props {
   onClose?: () => void;
 }
 
-// Synthetic history cache — persists across ticks, only regenerated on TF/pair change
-const syntheticCache = { key: '', bars: [] as Candle[] };
-
 // ── Main component ──────────────────────────────────────────────────────────
 export default function TradingViewChart({
   pair, candles, timeframe, onTimeframeChange, showSMC = false, onClose,
@@ -417,9 +414,10 @@ export default function TradingViewChart({
   const [drawColor,  setDrawColor]  = useState('#facc15');
 
   // For smart indicator rebuild tracking
-  const prevPairRef = useRef('');
-  const prevTfRef   = useRef('');
-  const prevLenRef  = useRef(0);
+  const prevPairRef       = useRef('');
+  const prevTfRef         = useRef('');
+  const prevLenRef        = useRef(0);
+  const syntheticCacheRef = useRef<{ key: string; bars: Candle[] }>({ key: '', bars: [] });
 
   // Timeframe aggregation — fall back to stable synthetic TF history when M1 seed is too sparse
   const tfMin     = useMemo(() => parseTimeframeToMinutes(timeframe), [timeframe]);
@@ -431,15 +429,15 @@ export default function TradingViewChart({
     const cacheKey  = `${pair.sym}-${tfMin}`;
 
     // Regenerate ONLY when TF or pair changes — not every 500ms tick
-    if (syntheticCache.key !== cacheKey) {
-      syntheticCache.key  = cacheKey;
-      syntheticCache.bars = generateTFHistory(lastPrice, pair.pip, 200, tfMin);
+    if (syntheticCacheRef.current.key !== cacheKey) {
+      syntheticCacheRef.current.key  = cacheKey;
+      syntheticCacheRef.current.bars = generateTFHistory(lastPrice, pair.pip, 200, tfMin);
     }
 
     // Update last bar: stable TF-period boundary timestamp + live close price
     const msPerBar = tfMin * 60 * 1000;
     const periodT  = Math.floor(Date.now() / msPerBar) * msPerBar;
-    const base     = syntheticCache.bars;
+    const base     = syntheticCacheRef.current.bars;
     const last     = { ...base[base.length - 1], t: periodT, c: lastPrice };
     last.h = Math.max(last.h, lastPrice);
     last.l = Math.min(last.l, lastPrice);
@@ -717,13 +715,6 @@ export default function TradingViewChart({
     el.addEventListener('chart-redraw', handler);
     return () => el.removeEventListener('chart-redraw', handler);
   }, [redraw]);
-
-  // Sync overlay canvas size on window resize
-  useEffect(() => {
-    const ov = overlayRef.current; const el = containerRef.current;
-    if (!ov || !el) return;
-    ov.width = el.clientWidth; ov.height = el.clientHeight;
-  });
 
   // ── Canvas mouse handlers (drawing tools) ──────────────────────────────
   const needsClicks: Record<string,number> = { hline:1, vline:1, trend:2, ray:2, rect:2, fib:2 };
