@@ -118,6 +118,30 @@ function aggregateCandles(candles: Candle[], tfMin: number): Candle[] {
   return out;
 }
 
+// ── Synthetic TF-level history for higher timeframes ──────────────────────
+function generateTFHistory(lastPrice: number, pip: number, count: number, tfMin: number): Candle[] {
+  const out: Candle[] = [];
+  let price = lastPrice;
+  const msPerBar = tfMin * 60 * 1000;
+  const now = Date.now();
+  const volFactor = tfMin <= 15 ? 1 : tfMin <= 60 ? 3 : tfMin <= 240 ? 8 : 20;
+  for (let i = count - 1; i >= 0; i--) {
+    const isUp = Math.random() > 0.49;
+    const body = (Math.random() * 3 + 0.5) * volFactor * pip;
+    const wick = (Math.random() * 2 + 0.3) * volFactor * pip;
+    const op = price;
+    const cl = isUp ? price + body : price - body;
+    out.unshift({
+      t: now - i * msPerBar,
+      o: +op.toFixed(5), h: +(Math.max(op, cl) + wick).toFixed(5),
+      l: +(Math.min(op, cl) - wick).toFixed(5), c: +cl.toFixed(5),
+      v: Math.floor(Math.random() * 1400 + 200),
+    });
+    price = cl;
+  }
+  return out;
+}
+
 // ── Lightweight-charts data helpers ────────────────────────────────────────
 type LWPt = { time: UTCTimestamp; value: number };
 function toLW(agg: Candle[], data: (number|null)[]): LWPt[] {
@@ -380,6 +404,9 @@ export default function TradingViewChart({
     ob:false, fvg:false, bos:false, liq:false, sr:false, sd:false, pd:false,
   });
 
+  // Volume visibility
+  const [showVol, setShowVol] = useState(true);
+
   // Drawing tool state
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [myDrawings, setMyDrawings] = useState<ChartDrawing[]>([]);
@@ -392,9 +419,16 @@ export default function TradingViewChart({
   const prevTfRef   = useRef('');
   const prevLenRef  = useRef(0);
 
-  // Timeframe aggregation
+  // Timeframe aggregation — fall back to synthetic TF history when M1 seed is too sparse
   const tfMin     = useMemo(() => parseTimeframeToMinutes(timeframe), [timeframe]);
-  const aggregated = useMemo(() => aggregateCandles(candles, tfMin), [candles, tfMin]);
+  const aggregated = useMemo(() => {
+    const agg = aggregateCandles(candles, tfMin);
+    if (agg.length < 100 && tfMin > 1 && pair) {
+      const lastPrice = candles.length > 0 ? candles[candles.length - 1].c : pair.base;
+      return generateTFHistory(lastPrice, pair.pip, 200, tfMin);
+    }
+    return agg;
+  }, [candles, tfMin, pair]);
 
   // SMC data (last 200 bars)
   const anySmc = Object.values(smcTog).some(Boolean);
@@ -631,6 +665,11 @@ export default function TradingViewChart({
   // Rebuild when indicator selection changes
   useEffect(() => { rebuildIndicators(); }, [activeOvl, activeSub, rebuildIndicators]);
 
+  // Volume visibility toggle
+  useEffect(() => {
+    chartRef.current?.priceScale('vol').applyOptions({ visible: showVol });
+  }, [showVol]);
+
   // ── Canvas redraw ──────────────────────────────────────────────────────
   const redraw = useCallback(() => {
     const canvas = overlayRef.current; const chart = chartRef.current; const cs = candleRef.current;
@@ -744,6 +783,13 @@ export default function TradingViewChart({
             </button>
           ))}
         </div>
+
+        {/* Volume toggle */}
+        <button
+          onClick={() => setShowVol(v => !v)}
+          className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded border transition-colors ${showVol ? 'bg-[#26a69a]/20 border-[#26a69a] text-[#26a69a]' : 'border-[#363a45] text-[#787b86] hover:text-[#d1d4dc] hover:bg-[#2a2e39]'}`}>
+          Vol
+        </button>
 
         {/* Indicators button */}
         <div className="relative">
