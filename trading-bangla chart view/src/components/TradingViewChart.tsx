@@ -393,6 +393,7 @@ export default function TradingViewChart({
   const indRef       = useRef<Map<string, ISeriesApi<SeriesType>[]>>(new Map());
   const volDataRef   = useRef<{ time: UTCTimestamp; value: number; color: string }[]>([]);
   const showVolRef   = useRef(true); // shadows showVol for use inside effects without dep
+  const aggregatedRef = useRef<typeof aggregated>([]); // kept in sync for use inside closures
 
   // Indicator state
   const [activeOvl,  setActiveOvl]  = useState<Set<string>>(new Set<string>());
@@ -405,6 +406,9 @@ export default function TradingViewChart({
 
   // Volume visibility
   const [showVol, setShowVol] = useState(true);
+
+  // OHLCV hover bar state (null = use last bar)
+  const [hoverBar, setHoverBar] = useState<{o:number;h:number;l:number;c:number;chg:number;chgPct:number}|null>(null);
 
   // Drawing tool state
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -463,18 +467,33 @@ export default function TradingViewChart({
         horzLine: { color: '#9598a1', width: 1, labelBackgroundColor: TV_BORDER },
       },
       rightPriceScale: { borderColor: TV_BORDER, scaleMargins: { top: 0.08, bottom: 0.22 } },
-      timeScale: { borderColor: TV_BORDER, timeVisible: true, secondsVisible: false, rightOffset: 8, barSpacing: 8 },
+      timeScale: { borderColor: TV_BORDER, timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 10 },
       handleScroll: true, handleScale: true,
       width: el.clientWidth, height: el.clientHeight,
     });
 
     const cs = chart.addSeries(CandlestickSeries, {
       upColor: UP, downColor: DN, borderUpColor: UP, borderDownColor: DN, wickUpColor: UP, wickDownColor: DN,
+      lastValueVisible: true, priceLineVisible: true, priceLineStyle: LineStyle.Dashed, priceLineWidth: 1,
     });
     const vs = chart.addSeries(HistogramSeries, { color: UP, priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
     chartRef.current = chart; candleRef.current = cs; volRef.current = vs;
+
+    // OHLCV crosshair: update hoverBar on mouse move over chart
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.point) { setHoverBar(null); return; }
+      const bar = param.seriesData.get(cs) as {open:number;high:number;low:number;close:number}|undefined;
+      if (!bar) { setHoverBar(null); return; }
+      const t   = param.time as number;
+      const agg = aggregatedRef.current;
+      const idx = agg.findIndex(c => Math.floor(c.t / 1000) === t);
+      const prev = idx > 0 ? agg[idx - 1] : null;
+      const chg    = prev ? bar.close - prev.c : 0;
+      const chgPct = prev && prev.c ? (chg / prev.c) * 100 : 0;
+      setHoverBar({ o: bar.open, h: bar.high, l: bar.low, c: bar.close, chg, chgPct });
+    });
 
     const syncCanvas = () => {
       const ov = overlayRef.current; if (!ov) return;
@@ -682,6 +701,9 @@ export default function TradingViewChart({
 
   // Rebuild when indicator selection changes
   useEffect(() => { rebuildIndicators(); }, [activeOvl, activeSub, rebuildIndicators]);
+
+  // Keep aggregatedRef in sync so crosshair closure can access current data
+  useEffect(() => { aggregatedRef.current = aggregated; }, [aggregated]);
 
   // Volume visibility toggle — uses setData([]) / setData(full) instead of priceScale visibility
   useEffect(() => {
@@ -935,6 +957,30 @@ export default function TradingViewChart({
           onMouseMove={handleCanvasMove}
           onClick={handleCanvasClick}
         />
+        {/* OHLCV info bar — MT5/TradingView style, shows hovered or last candle */}
+        {(() => {
+          const dec  = pair?.dec ?? 5;
+          const last = aggregated[aggregated.length - 1];
+          const bar  = hoverBar ?? (last ? {
+            o: last.o, h: last.h, l: last.l, c: last.c,
+            chg:    aggregated.length > 1 ? last.c - aggregated[aggregated.length - 2].c : 0,
+            chgPct: aggregated.length > 1 ? ((last.c - aggregated[aggregated.length - 2].c) / aggregated[aggregated.length - 2].c) * 100 : 0,
+          } : null);
+          if (!bar) return null;
+          const fmt = (v: number) => v.toFixed(dec);
+          const up  = bar.chg >= 0;
+          return (
+            <div className="absolute top-1 left-1 flex items-center gap-2 text-[10px] font-mono pointer-events-none z-10 select-none px-2 py-0.5 rounded bg-[#131722]/80">
+              <span className="text-[#555]">O</span><span className="text-[#d1d4dc]">{fmt(bar.o)}</span>
+              <span className="text-[#555]">H</span><span className="text-[#26a69a]">{fmt(bar.h)}</span>
+              <span className="text-[#555]">L</span><span className="text-[#ef5350]">{fmt(bar.l)}</span>
+              <span className="text-[#555]">C</span><span className="text-[#d1d4dc]">{fmt(bar.c)}</span>
+              <span className={up ? 'text-[#26a69a]' : 'text-[#ef5350]'}>
+                {up ? '+' : ''}{bar.chg.toFixed(dec)}&nbsp;({up ? '+' : ''}{bar.chgPct.toFixed(2)}%)
+              </span>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
