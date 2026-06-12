@@ -195,9 +195,9 @@ export default function App() {
   useEffect(() => {
     const fetchGold = async () => {
       try {
-        const res = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
+        const res = await fetch('https://api.gold-api.com/price/XAU');
         const data = await res.json();
-        const price = Number(data?.items?.[0]?.xauPrice);
+        const price = Number(data?.price);
         if (price > 1000) {
           liveRef.current['XAUUSD'] = price;
           liveTimestampRef.current['XAUUSD'] = Date.now();
