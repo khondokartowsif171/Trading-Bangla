@@ -410,6 +410,9 @@ export default function TradingViewChart({
   // OHLCV hover bar state (null = use last bar)
   const [hoverBar, setHoverBar] = useState<{o:number;h:number;l:number;c:number;chg:number;chgPct:number}|null>(null);
 
+  // Real historical candles fetched per pair+TF from /api/oanda-candles
+  const [realCandles, setRealCandles] = useState<Candle[] | null>(null);
+
   // Drawing tool state
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [myDrawings, setMyDrawings] = useState<ChartDrawing[]>([]);
@@ -448,12 +451,47 @@ export default function TradingViewChart({
     return [...base.slice(0, -1), last];
   }, [candles, tfMin, pair]);
 
+  // Fetch real OHLCV history from TwelveData proxy whenever pair or TF changes
+  const TF_TO_INTERVAL: Record<string, string> = {
+    M1: '1min', M5: '5min', M15: '15min', H1: '1h', H4: '4h', D1: '1day',
+  };
+  useEffect(() => {
+    if (!pair?.sym) return;
+    let cancelled = false;
+    setRealCandles(null);
+    const interval = TF_TO_INTERVAL[timeframe] ?? '1min';
+    fetch(`/api/oanda-candles?sym=${pair.sym}&interval=${interval}&count=500`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!cancelled && Array.isArray(d?.candles) && d.candles.length > 0) {
+          setRealCandles(d.candles as Candle[]);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [pair?.sym, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // displayData: real candles with live close merged on last bar, or synthetic fallback
+  const displayData = useMemo<Candle[]>(() => {
+    if (!realCandles || realCandles.length === 0) return aggregated;
+    const liveClose = candles[candles.length - 1]?.c;
+    if (!liveClose) return realCandles;
+    const last = realCandles[realCandles.length - 1];
+    const updatedLast: Candle = {
+      ...last,
+      c: liveClose,
+      h: Math.max(last.h, liveClose),
+      l: Math.min(last.l, liveClose),
+    };
+    return [...realCandles.slice(0, -1), updatedLast];
+  }, [realCandles, aggregated, candles]);
+
   // SMC data (last 200 bars)
   const anySmc = Object.values(smcTog).some(Boolean);
   const smcData = useMemo((): SMCData | null => {
-    if (!anySmc || aggregated.length < 15) return null;
-    return detectSMC(aggregated.slice(-200), Math.max(0, aggregated.length - 200));
-  }, [aggregated, anySmc]);
+    if (!anySmc || displayData.length < 15) return null;
+    return detectSMC(displayData.slice(-200), Math.max(0, displayData.length - 200));
+  }, [displayData, anySmc]);
 
   // ── Init chart once ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -524,7 +562,7 @@ export default function TradingViewChart({
 
   // ── Rebuild all indicators ─────────────────────────────────────────────
   const rebuildIndicators = useCallback(() => {
-    const chart = chartRef.current; const agg = aggregated;
+    const chart = chartRef.current; const agg = displayData;
     if (!chart || agg.length === 0) return;
 
     // Remove old indicator series
@@ -665,19 +703,19 @@ export default function TradingViewChart({
       addLine('ppo_l','#60a5fa', toLW(agg,pp.ppo), 1, 'PPO'); addLine('ppo_s','#ef5350', toLW(agg,pp.signal), 1, 'Signal');
       addHist('ppo_h', toHist(agg, pp.hist, v => v>=0?'rgba(38,166,154,0.6)':'rgba(239,83,80,0.6)'));
     }
-  }, [aggregated, activeOvl, activeSub, addLine, addHist]);
+  }, [displayData, activeOvl, activeSub, addLine, addHist]);
 
   // ── Trigger indicator rebuild on data/active set change ─────────────────
   useEffect(() => {
     const chart = chartRef.current; const cs = candleRef.current; const vs = volRef.current;
-    if (!chart || !cs || !vs || aggregated.length === 0) return;
+    if (!chart || !cs || !vs || displayData.length === 0) return;
 
     const pairChanged = pair?.sym !== prevPairRef.current;
     const tfChanged   = timeframe !== prevTfRef.current;
-    const lenChanged  = aggregated.length !== prevLenRef.current;
+    const lenChanged  = displayData.length !== prevLenRef.current;
     const needFull    = pairChanged || tfChanged || lenChanged;
 
-    const agg = aggregated;
+    const agg = displayData;
     const lwCandles = agg.map(c => ({ time: Math.floor(c.t/1000) as UTCTimestamp, open:c.o, high:c.h, low:c.l, close:c.c }));
     const lwVol     = agg.map(c => ({ time: Math.floor(c.t/1000) as UTCTimestamp, value:c.v, color:c.c>=c.o?'rgba(38,166,154,0.4)':'rgba(239,83,80,0.4)' }));
 
@@ -697,13 +735,13 @@ export default function TradingViewChart({
       if (volDataRef.current.length > 0) volDataRef.current[volDataRef.current.length-1] = volPt;
       if (showVolRef.current) vs.update(volPt);
     }
-  }, [aggregated, pair?.sym, timeframe, rebuildIndicators]);
+  }, [displayData, pair?.sym, timeframe, rebuildIndicators]);
 
   // Rebuild when indicator selection changes
   useEffect(() => { rebuildIndicators(); }, [activeOvl, activeSub, rebuildIndicators]);
 
   // Keep aggregatedRef in sync so crosshair closure can access current data
-  useEffect(() => { aggregatedRef.current = aggregated; }, [aggregated]);
+  useEffect(() => { aggregatedRef.current = displayData; }, [displayData]);
 
   // Volume visibility toggle — uses setData([]) / setData(full) instead of priceScale visibility
   useEffect(() => {
@@ -720,14 +758,14 @@ export default function TradingViewChart({
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const w = canvas.width; const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    if (anySmc && smcData && aggregated.length > 0) drawSMCOverlay(ctx, chart, cs, smcData, aggregated, smcTog, w, h);
+    if (anySmc && smcData && displayData.length > 0) drawSMCOverlay(ctx, chart, cs, smcData, displayData, smcTog, w, h);
     myDrawings.forEach(d => renderDrawing(ctx, d, chart, cs, w, h));
     if (pendingPts.length > 0 && hoverPos && activeTool) {
       const previewPts = [...pendingPts, { time: (chart.timeScale().coordinateToTime(hoverPos.x) as number) ?? 0, price: cs.coordinateToPrice(hoverPos.y) ?? 0 }];
       const preview: ChartDrawing = { id:'preview', type: activeTool as ChartDrawing['type'], color: drawColor, pts: previewPts };
       renderDrawing(ctx, preview, chart, cs, w, h, 0.6);
     }
-  }, [anySmc, smcData, aggregated, smcTog, myDrawings, pendingPts, hoverPos, activeTool, drawColor]);
+  }, [anySmc, smcData, displayData, smcTog, myDrawings, pendingPts, hoverPos, activeTool, drawColor]);
 
   useEffect(() => { requestAnimationFrame(redraw); }, [redraw]);
 
