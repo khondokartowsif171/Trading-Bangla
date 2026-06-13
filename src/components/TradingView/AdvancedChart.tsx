@@ -22,6 +22,7 @@ export const TV_SYMBOL_MAP: Record<string, string> = {
 };
 
 export function toTvSymbol(symbol: string): string {
+  if (symbol.includes(':')) return symbol; // already a fully-qualified TV symbol
   return TV_SYMBOL_MAP[symbol] ?? `FX:${symbol.replace('/', '')}`;
 }
 
