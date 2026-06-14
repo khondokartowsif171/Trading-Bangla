@@ -76,7 +76,7 @@ export default async function handler(req: any, res: any) {
   const tdSym = SYM_TO_TD[sym];
   if (!tdSym) return res.status(400).json({ error: `Unknown symbol: ${sym}` });
 
-  const tdKey = process.env.TWELVEDATA_KEY || 'dd5f8e4e70e0445e96119e5182040118';
+  const tdKey = process.env.TWELVEDATA_KEY || 'e30d448ab4db4224877675145d6c559d';
   try {
     const url =
       `https://api.twelvedata.com/time_series` +
