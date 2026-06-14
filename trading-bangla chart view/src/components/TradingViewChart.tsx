@@ -451,7 +451,7 @@ export default function TradingViewChart({
     return [...base.slice(0, -1), last];
   }, [candles, tfMin, pair]);
 
-  // Fetch real OHLCV history from TwelveData proxy whenever pair or TF changes
+  // Fetch real OHLCV history whenever pair or TF changes
   const TF_TO_INTERVAL: Record<string, string> = {
     M1: '1min', M5: '5min', M15: '15min', H1: '1h', H4: '4h', D1: '1day',
   };
@@ -460,23 +460,44 @@ export default function TradingViewChart({
     let cancelled = false;
     setRealCandles(null);
     const interval = TF_TO_INTERVAL[timeframe] ?? '1min';
-    fetch(`/api/oanda-candles?sym=${pair.sym}&interval=${interval}&count=500`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!cancelled && Array.isArray(d?.candles) && d.candles.length > 0) {
-          setRealCandles(d.candles as Candle[]);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    const doFetch = () => {
+      fetch(`/api/oanda-candles?sym=${pair.sym}&interval=${interval}&count=500`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!cancelled && Array.isArray(d?.candles) && d.candles.length > 0) {
+            setRealCandles(d.candles as Candle[]);
+          }
+        })
+        .catch(() => {});
+    };
+    doFetch();
+    // Periodic re-fetch so new candles appear: refresh every TF period
+    const REFRESH_MS: Record<string, number> = {
+      M1: 60_000, M5: 5*60_000, M15: 15*60_000, H1: 60*60_000, H4: 4*60*60_000, D1: 24*60*60_000,
+    };
+    const ms = REFRESH_MS[timeframe] ?? 60_000;
+    const iv = setInterval(doFetch, ms);
+    return () => { cancelled = true; clearInterval(iv); };
   }, [pair?.sym, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // displayData: real candles with live close merged on last bar, or synthetic fallback
+  // displayData: real candles with live close merged — new candle appears when TF period rolls over
   const displayData = useMemo<Candle[]>(() => {
     if (!realCandles || realCandles.length === 0) return aggregated;
     const liveClose = candles[candles.length - 1]?.c;
     if (!liveClose) return realCandles;
+
     const last = realCandles[realCandles.length - 1];
+    const msPerBar = tfMin * 60 * 1000;
+    const nowPeriod  = Math.floor(Date.now() / msPerBar) * msPerBar;
+    const lastPeriod = Math.floor(last.t / msPerBar) * msPerBar;
+
+    if (nowPeriod > lastPeriod) {
+      // New TF period has started — append a live forming candle
+      const newBar: Candle = { t: nowPeriod, o: liveClose, h: liveClose, l: liveClose, c: liveClose, v: 0 };
+      return [...realCandles, newBar];
+    }
+
+    // Same period — update the last bar's close/high/low in real time
     const updatedLast: Candle = {
       ...last,
       c: liveClose,
@@ -484,7 +505,7 @@ export default function TradingViewChart({
       l: Math.min(last.l, liveClose),
     };
     return [...realCandles.slice(0, -1), updatedLast];
-  }, [realCandles, aggregated, candles]);
+  }, [realCandles, aggregated, candles, tfMin]);
 
   // SMC data (last 200 bars)
   const anySmc = Object.values(smcTog).some(Boolean);
