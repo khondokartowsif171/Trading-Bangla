@@ -1,7 +1,13 @@
+$ cat /home/user/Trading-Bangla/api/oanda-candles.ts
+
 // Vercel serverless — real OHLCV history proxy for chart-view MT5 Terminal
 // Priority 1: OANDA REST historical candles (same source as TradingView/OANDA widget)
 // Priority 2: TwelveData time_series (fallback when OANDA_TOKEN not set)
 // Query: /api/oanda-candles?sym=XAUUSD&interval=1h&count=500
+//
+// Caching: a module-level cache dedups upstream calls so TwelveData's free-tier
+// limit (8 req/min, 800/day) isn't tripped. On a 429/error we serve the last
+// known-good real candles (stale) instead of dropping the chart to synthetic data.
 
 // Chart symbol → OANDA instrument name
 const SYM_TO_OANDA: Record<string, string> = {
@@ -27,6 +33,15 @@ const SYM_TO_TD: Record<string, string> = {
   XAGUSD: 'XAG/USD', US30: 'DJI', NAS100: 'NDX', USOIL: 'WTI/USD',
 };
 
+// ── Module-level cache (persists across warm serverless invocations) ──────────
+// Higher timeframes change slowly → cache them longer. Values are in ms.
+const TTL_MS: Record<string, number> = {
+  '1min': 45_000, '5min': 120_000, '15min': 300_000,
+  '1h':   600_000, '4h':  1_800_000, '1day': 3_600_000,
+};
+type CachedPayload = { candles: any[]; provider: string; sym: string; interval: string };
+const memCache: Record<string, { at: number; payload: CachedPayload }> = {};
+
 export default async function handler(req: any, res: any) {
   const sym      = (req.query.sym      as string | undefined) ?? '';
   const interval = (req.query.interval as string | undefined) ?? '1h';
@@ -34,8 +49,19 @@ export default async function handler(req: any, res: any) {
 
   if (!sym) return res.status(400).json({ error: 'Missing sym parameter' });
 
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+  const ttl     = TTL_MS[interval] ?? 60_000;
+  const cacheKey = `${sym}:${interval}`;
+  const cached  = memCache[cacheKey];
+
+  // Strong per-interval edge caching so Vercel's CDN also dedups across users.
+  const sMax = Math.floor(ttl / 1000);
+  res.setHeader('Cache-Control', `s-maxage=${sMax}, stale-while-revalidate=120`);
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // ── Fresh in-memory cache hit — no upstream call ────────────────────────────
+  if (cached && Date.now() - cached.at < ttl) {
+    return res.json({ ...cached.payload, cached: true });
+  }
 
   // ── Priority 1: OANDA Historical Candles (same source as TradingView OANDA widget) ──
   const oandaToken = process.env.OANDA_TOKEN;
@@ -66,7 +92,9 @@ export default async function handler(req: any, res: any) {
             c: parseFloat(c.mid.c),
             v: c.volume ?? 0,
           }));
-          return res.json({ candles, provider: 'oanda', sym, interval });
+          const payload: CachedPayload = { candles, provider: 'oanda', sym, interval };
+          memCache[cacheKey] = { at: Date.now(), payload };
+          return res.json(payload);
         }
       }
     } catch { /* fall through to TwelveData */ }
@@ -74,7 +102,10 @@ export default async function handler(req: any, res: any) {
 
   // ── Priority 2: TwelveData time_series ────────────────────────────────────
   const tdSym = SYM_TO_TD[sym];
-  if (!tdSym) return res.status(400).json({ error: `Unknown symbol: ${sym}` });
+  if (!tdSym) {
+    if (cached) return res.json({ ...cached.payload, stale: true });
+    return res.status(400).json({ error: `Unknown symbol: ${sym}` });
+  }
 
   const tdKey = process.env.TWELVEDATA_KEY || 'e30d448ab4db4224877675145d6c559d';
   try {
@@ -85,10 +116,16 @@ export default async function handler(req: any, res: any) {
       `&outputsize=${count}` +
       `&apikey=${tdKey}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
-    if (!r.ok) return res.status(502).json({ error: `TwelveData HTTP ${r.status}` });
+
+    // Rate-limited or upstream error → serve last known-good real candles if we have them.
+    if (!r.ok) {
+      if (cached) return res.json({ ...cached.payload, stale: true });
+      return res.status(502).json({ error: `TwelveData HTTP ${r.status}` });
+    }
 
     const data = await r.json();
     if (data.status === 'error' || !Array.isArray(data.values)) {
+      if (cached) return res.json({ ...cached.payload, stale: true });
       return res.status(502).json({ error: data.message ?? 'No values array', raw: data });
     }
 
@@ -101,8 +138,12 @@ export default async function handler(req: any, res: any) {
       c: parseFloat(v.close),
       v: parseFloat(v.volume ?? '0'),
     }));
-    return res.json({ candles, provider: 'twelvedata', sym, interval });
+    const payload: CachedPayload = { candles, provider: 'twelvedata', sym, interval };
+    memCache[cacheKey] = { at: Date.now(), payload };
+    return res.json(payload);
   } catch (e: any) {
+    // Network failure → serve stale real candles rather than nothing.
+    if (cached) return res.json({ ...cached.payload, stale: true });
     return res.status(503).json({ error: 'All providers failed', detail: e?.message ?? '' });
   }
 }
