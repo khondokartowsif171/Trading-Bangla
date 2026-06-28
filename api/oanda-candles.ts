@@ -1,5 +1,3 @@
-$ cat /home/user/Trading-Bangla/api/oanda-candles.ts
-
 // Vercel serverless — real OHLCV history proxy for chart-view MT5 Terminal
 // Priority 1: OANDA REST historical candles (same source as TradingView/OANDA widget)
 // Priority 2: TwelveData time_series (fallback when OANDA_TOKEN not set)
