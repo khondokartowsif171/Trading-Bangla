@@ -1,11 +1,14 @@
 // Vercel serverless — real OHLCV history proxy for chart-view MT5 Terminal
-// Priority 1: OANDA REST historical candles (same source as TradingView/OANDA widget)
-// Priority 2: TwelveData time_series (fallback when OANDA_TOKEN not set)
+// Priority 0: VPS candle proxy (clean IP — bypasses TwelveData's Vercel-IP throttling)
+// Priority 1: OANDA REST historical candles (if OANDA_TOKEN set)
+// Priority 2: TwelveData time_series direct (last resort)
 // Query: /api/oanda-candles?sym=XAUUSD&interval=1h&count=500
 //
-// Caching: a module-level cache dedups upstream calls so TwelveData's free-tier
-// limit (8 req/min, 800/day) isn't tripped. On a 429/error we serve the last
-// known-good real candles (stale) instead of dropping the chart to synthetic data.
+// Caching: a module-level cache dedups upstream calls. On any upstream error we
+// serve the last known-good real candles (stale) instead of dropping to synthetic.
+
+// VPS proxy base (HTTP — candle data is public; sidesteps Traefik LE cert delay)
+const VPS_PROXY = process.env.CANDLE_PROXY_URL || 'http://candles.auraajenticai.cloud';
 
 // Chart symbol → OANDA instrument name
 const SYM_TO_OANDA: Record<string, string> = {
@@ -32,7 +35,6 @@ const SYM_TO_TD: Record<string, string> = {
 };
 
 // ── Module-level cache (persists across warm serverless invocations) ──────────
-// Higher timeframes change slowly → cache them longer. Values are in ms.
 const TTL_MS: Record<string, number> = {
   '1min': 45_000, '5min': 120_000, '15min': 300_000,
   '1h':   600_000, '4h':  1_800_000, '1day': 3_600_000,
@@ -51,17 +53,30 @@ export default async function handler(req: any, res: any) {
   const cacheKey = `${sym}:${interval}`;
   const cached  = memCache[cacheKey];
 
-  // Strong per-interval edge caching so Vercel's CDN also dedups across users.
   const sMax = Math.floor(ttl / 1000);
   res.setHeader('Cache-Control', `s-maxage=${sMax}, stale-while-revalidate=120`);
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  // ── Fresh in-memory cache hit — no upstream call ────────────────────────────
+  // Fresh in-memory cache hit — no upstream call
   if (cached && Date.now() - cached.at < ttl) {
     return res.json({ ...cached.payload, cached: true });
   }
 
-  // ── Priority 1: OANDA Historical Candles (same source as TradingView OANDA widget) ──
+  // ── Priority 0: VPS candle proxy (clean IP, not throttled by TwelveData) ──
+  try {
+    const purl = `${VPS_PROXY}/candles?sym=${encodeURIComponent(sym)}&interval=${interval}&count=${count}`;
+    const r = await fetch(purl, { signal: AbortSignal.timeout(9000) });
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data?.candles) && data.candles.length > 0) {
+        const payload: CachedPayload = { candles: data.candles, provider: data.provider || 'vps', sym, interval };
+        memCache[cacheKey] = { at: Date.now(), payload };
+        return res.json(payload);
+      }
+    }
+  } catch { /* fall through */ }
+
+  // ── Priority 1: OANDA Historical Candles (if token configured) ──
   const oandaToken = process.env.OANDA_TOKEN;
   const oandaInst  = SYM_TO_OANDA[sym];
   const oandaGran  = INTERVAL_TO_GRAN[interval];
@@ -98,7 +113,7 @@ export default async function handler(req: any, res: any) {
     } catch { /* fall through to TwelveData */ }
   }
 
-  // ── Priority 2: TwelveData time_series ────────────────────────────────────
+  // ── Priority 2: TwelveData time_series direct (last resort) ──
   const tdSym = SYM_TO_TD[sym];
   if (!tdSym) {
     if (cached) return res.json({ ...cached.payload, stale: true });
@@ -115,7 +130,6 @@ export default async function handler(req: any, res: any) {
       `&apikey=${tdKey}`;
     const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
 
-    // Rate-limited or upstream error → serve last known-good real candles if we have them.
     if (!r.ok) {
       if (cached) return res.json({ ...cached.payload, stale: true });
       return res.status(502).json({ error: `TwelveData HTTP ${r.status}` });
@@ -127,7 +141,6 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: data.message ?? 'No values array', raw: data });
     }
 
-    // TwelveData returns newest-first; reverse to oldest-first for lightweight-charts
     const candles = (data.values as any[]).reverse().map((v) => ({
       t: new Date(v.datetime).getTime(),
       o: parseFloat(v.open),
@@ -140,7 +153,6 @@ export default async function handler(req: any, res: any) {
     memCache[cacheKey] = { at: Date.now(), payload };
     return res.json(payload);
   } catch (e: any) {
-    // Network failure → serve stale real candles rather than nothing.
     if (cached) return res.json({ ...cached.payload, stale: true });
     return res.status(503).json({ error: 'All providers failed', detail: e?.message ?? '' });
   }
